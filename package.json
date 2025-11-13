@@ -18,6 +18,8 @@
   "homepage": "https://github.com/PAYS0N/habit-tracking#readme",
   "description": "",
   "dependencies": {
-    "express": "^5.1.0"
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "mysql2": "^3.15.3"
   }
 }
