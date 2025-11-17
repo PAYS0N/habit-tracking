@@ -29,9 +29,8 @@ db.connect(err => {
   console.log('Connected to MySQL database.');
 });
 
-// Example route
 app.get('/api/habits', (req, res) => {
-  db.query('SELECT id, username FROM users', (err, results) => {
+  db.query('SELECT * FROM user_happiness', (err, results) => {
     if (err) {
       console.error('Query error:', err);
       return res.status(500).send('Database error');
@@ -39,6 +38,33 @@ app.get('/api/habits', (req, res) => {
     res.json(results);
   });
 });
+
+app.post('/api/habits', (req, res) => {
+  const { good_day } = req.body;
+
+  db.beginTransaction(err => {
+    if (err) return res.status(500).json({ success: false, error: err.message });
+
+    const query = 'INSERT INTO user_happiness (is_good_day) VALUES (?)';
+    db.query(query, [good_day], (err, result) => {
+      if (err) {
+        return db.rollback(() => {
+          res.status(500).json({ success: false, error: err.message });
+        });
+      }
+
+      db.commit(err => {
+        if (err) {
+          return db.rollback(() => {
+            res.status(500).json({ success: false, error: err.message });
+          });
+        }
+        res.json({ success: true, entryId: result.insertId });
+      });
+    });
+  });
+});
+
 
 // Start server
 app.listen(PORT, () => {
