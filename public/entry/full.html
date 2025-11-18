@@ -1,1 +1,33 @@
-enter full
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../css/global.css">
+    <title>Document</title>
+</head>
+<body>
+    <div id="header">
+        How was your day?
+    </div>
+    <div id="main">
+        <form action="POST" id="day-form">
+            <div id="type_of_day" class="question-input">
+                Was your day
+                <div>
+                    <input type="radio" name="type_of_day" id="had_good_day_radio">Good
+                    <input type="radio" name="type_of_day" id="had_bad_day_radio">Bad
+                </div>
+            </div>
+            <div id="hours_of_sleep" class="question-input">
+                How many hours of sleep did you get?
+                <input type="number">
+            </div>
+            <button>Submit</button>
+        </form>
+    </div>
+    <div id="footer">
+        By Payson Eberz
+    </div>
+</body>
+</html>
