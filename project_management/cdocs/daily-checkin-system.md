@@ -90,6 +90,9 @@ Accepts form data. Steps in order:
 6. Remove captive portal DNAT rule.
 7. Return HTML confirmation page with date and unblock confirmation.
 
+### `GET /history`
+Returns a read-only HTML page listing all checkin records, ordered by date DESC. Queries all rows from `checkins` and renders them in a horizontally-scrollable table. Backfilled rows (where `submitted_at IS NULL`) are visually dimmed. Columns shown: date, submitted_at (time only, or "—"), mood, energy, anxiety, sleep_hours, sleep_end (wake time), nightmares, coffee, melatonin, intrusive, exercise_minutes, sunlight_minutes, hours_worked, meals_yesterday, snacks_yesterday. Matches the dark theme of the checkin form. Includes a link back to `/`. No authentication, no pagination. Read-only — no writes.
+
 ### `GET /status`
 Returns JSON `{"blocked": true/false, "today_submitted": true/false}`. Checks `allowed_internet` ipset membership via `ipset test`.
 
@@ -158,10 +161,3 @@ Plain HTML/CSS, dark theme, no JavaScript framework. Fields grouped into section
 - **Captive portal HTTPS:** DNAT only redirects HTTP (port 80). HTTPS-first sites require manual navigation to the form URL.
 - **iptables persistence:** The DNAT rule and `must_checkin` ipset do not persist across Pi reboots. The block timer recreates them at the next 05:00. If the Pi reboots mid-day before checkin, devices regain internet until the next 05:00 trigger.
 - **No authentication:** Any device on the LAN can submit the form.
-
-## Future Work
-
-- `/history` read-only UI for viewing past checkins
-- Per-device submission tracking
-- iptables/ipset persistence across reboot
-- HTTPS / trusted cert for captive portal
