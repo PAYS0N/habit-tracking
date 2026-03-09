@@ -1,0 +1,7 @@
+[Unit]
+Description=Run daily checkin block
+
+[Service]
+Type=oneshot
+ExecStart=/home/pays0n/daily-checkin/block.sh
+User=root

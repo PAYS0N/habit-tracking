@@ -247,6 +247,13 @@ if row:
 
 This is fire-and-forget — null rows are inserted with only the `date` column populated.
 
+## Implementation Notes (deviations from original spec)
+
+- **Binary paths:** Default set to `/usr/sbin/ipset` and `/usr/sbin/iptables` (not `/sbin/`). Must be verified on the Pi before deployment; paths appear in `main.py`, `block.sh`, and `sudoers-daily-checkin`.
+- **`ipset test` sudoers entry:** Added `ipset test allowed_internet *` to the sudoers file (not in original spec) so `GET /status` can check whether devices are blocked.
+- **Sudoers file:** Shipped as `sudoers-daily-checkin` in the repo for version control; must be copied to `/etc/sudoers.d/daily-checkin` with mode 0440 on the Pi.
+- **Form UI:** Dark theme with toggle buttons for boolean fields. No JavaScript framework; all client-side validation via HTML5 `required`/`min`/`max` attributes.
+
 ## Out of Scope (MVP)
 
 - `/history` read-only UI

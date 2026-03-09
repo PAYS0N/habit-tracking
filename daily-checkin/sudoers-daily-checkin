@@ -1,0 +1,13 @@
+# /etc/sudoers.d/daily-checkin
+# Passwordless sudo for the daily-checkin service (runs as pays0n).
+# IMPORTANT: Verify binary paths on the Pi before deploying.
+#   which ipset     -> /usr/sbin/ipset or /sbin/ipset
+#   which iptables  -> /usr/sbin/iptables or /sbin/iptables
+# Update paths below AND in main.py + block.sh if they differ.
+
+pays0n ALL=(root) NOPASSWD: /usr/sbin/ipset add allowed_internet * -exist
+pays0n ALL=(root) NOPASSWD: /usr/sbin/ipset del allowed_internet *
+pays0n ALL=(root) NOPASSWD: /usr/sbin/ipset test allowed_internet *
+pays0n ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -D PREROUTING *
+pays0n ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -A PREROUTING *
+pays0n ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -C PREROUTING *

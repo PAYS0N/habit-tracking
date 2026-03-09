@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Checkin</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 480px; margin: 0 auto; padding: 16px;
+            background: #0d1117; color: #c9d1d9;
+        }
+        h1 { color: #58a6ff; margin-bottom: 20px; text-align: center; font-size: 1.5rem; }
+        h2 { color: #8b949e; font-size: 0.9rem; text-transform: uppercase;
+             letter-spacing: 0.05em; margin: 20px 0 10px; border-bottom: 1px solid #21262d;
+             padding-bottom: 6px; }
+        .field { margin-bottom: 14px; }
+        label { display: block; font-weight: 600; margin-bottom: 4px; font-size: 0.95rem; }
+        .hint { color: #8b949e; font-size: 0.8rem; margin-bottom: 4px; }
+        input[type="number"], input[type="time"], select {
+            width: 100%; padding: 10px; border: 1px solid #30363d; border-radius: 6px;
+            background: #161b22; color: #c9d1d9; font-size: 1rem;
+        }
+        input:focus, select:focus { outline: none; border-color: #58a6ff; }
+        .toggle-group { display: flex; gap: 8px; }
+        .toggle-group label {
+            flex: 1; text-align: center; padding: 10px; border: 1px solid #30363d;
+            border-radius: 6px; cursor: pointer; font-weight: 400; background: #161b22;
+        }
+        .toggle-group input[type="radio"] { display: none; }
+        .toggle-group input[type="radio"]:checked + span {
+            color: #58a6ff; font-weight: 600;
+        }
+        .toggle-group label:has(input:checked) {
+            border-color: #58a6ff; background: #0d2137;
+        }
+        button[type="submit"] {
+            width: 100%; padding: 14px; margin-top: 24px; border: none; border-radius: 8px;
+            background: #238636; color: #fff; font-size: 1.1rem; font-weight: 600;
+            cursor: pointer;
+        }
+        button[type="submit"]:active { background: #2ea043; }
+    </style>
+</head>
+<body>
+    <h1>Daily Checkin</h1>
+    <form action="/submit" method="POST">
+
+        <h2>Sleep</h2>
+
+        <div class="field">
+            <label for="sleep_hours">Hours of sleep</label>
+            <input type="number" id="sleep_hours" name="sleep_hours" min="0" max="24" step="0.5" required>
+        </div>
+
+        <div class="field">
+            <label for="sleep_start">Lights out</label>
+            <div class="hint">Time you tried to fall asleep</div>
+            <input type="time" id="sleep_start" name="sleep_start" required>
+        </div>
+
+        <div class="field">
+            <label for="sleep_end">Wake time</label>
+            <input type="time" id="sleep_end" name="sleep_end" required>
+        </div>
+
+        <div class="field">
+            <label>Nightmares?</label>
+            <div class="toggle-group">
+                <label><input type="radio" name="nightmares" value="0" required><span>No</span></label>
+                <label><input type="radio" name="nightmares" value="1"><span>Yes</span></label>
+            </div>
+        </div>
+
+        <h2>Mental State</h2>
+        <div class="hint" style="margin-bottom:10px;">Rate your current state this morning.</div>
+
+        <div class="field">
+            <label for="mood">Mood (1–10)</label>
+            <input type="number" id="mood" name="mood" min="1" max="10" required>
+        </div>
+
+        <div class="field">
+            <label for="energy">Energy (1–10)</label>
+            <input type="number" id="energy" name="energy" min="1" max="10" required>
+        </div>
+
+        <div class="field">
+            <label for="anxiety">Anxiety (1–10)</label>
+            <input type="number" id="anxiety" name="anxiety" min="1" max="10" required>
+        </div>
+
+        <div class="field">
+            <label for="intrusive">Intrusive thoughts / flashbacks (0–5)</label>
+            <div class="hint">0 = none · 1 = one brief instance · 5 = severe or frequent throughout the day</div>
+            <input type="number" id="intrusive" name="intrusive" min="0" max="5" required>
+        </div>
+
+        <h2>Substances</h2>
+
+        <div class="field">
+            <label>Coffee this morning?</label>
+            <div class="hint">Have you had coffee before filling this out?</div>
+            <div class="toggle-group">
+                <label><input type="radio" name="coffee" value="0" required><span>No</span></label>
+                <label><input type="radio" name="coffee" value="1"><span>Yes</span></label>
+            </div>
+        </div>
+
+        <div class="field">
+            <label>Melatonin last night?</label>
+            <div class="hint">Did you take melatonin before sleep?</div>
+            <div class="toggle-group">
+                <label><input type="radio" name="melatonin" value="0" required><span>No</span></label>
+                <label><input type="radio" name="melatonin" value="1"><span>Yes</span></label>
+            </div>
+        </div>
+
+        <h2>Yesterday's Activity</h2>
+
+        <div class="field">
+            <label for="meals_yesterday">Meals</label>
+            <input type="number" id="meals_yesterday" name="meals_yesterday" min="0" max="10" required>
+        </div>
+
+        <div class="field">
+            <label for="snacks_yesterday">Non-meal snacks</label>
+            <input type="number" id="snacks_yesterday" name="snacks_yesterday" min="0" max="20" required>
+        </div>
+
+        <div class="field">
+            <label for="exercise_minutes">Exercise (minutes)</label>
+            <div class="hint">Intentional activity only (walking, gym, cycling, yoga). Not passive movement. Enter 0 if none.</div>
+            <input type="number" id="exercise_minutes" name="exercise_minutes" min="0" max="480" required>
+        </div>
+
+        <div class="field">
+            <label for="sunlight_minutes">Direct sunlight (minutes)</label>
+            <div class="hint">Sun on skin/eyes during daylight hours. Heavy overcast or nighttime doesn't count. Estimate conservatively.</div>
+            <input type="number" id="sunlight_minutes" name="sunlight_minutes" min="0" max="480" required>
+        </div>
+
+        <div class="field">
+            <label for="hours_worked">Hours worked</label>
+            <input type="number" id="hours_worked" name="hours_worked" min="0" max="24" step="0.5" required>
+        </div>
+
+        <button type="submit">Submit Checkin</button>
+    </form>
+</body>
+</html>
