@@ -171,6 +171,118 @@ async def submit(
 </html>""")
 
 
+@app.get("/history", response_class=HTMLResponse)
+async def history():
+    conn = await get_db()
+    rows = await conn.execute_fetchall(
+        "SELECT * FROM checkins ORDER BY date DESC"
+    )
+
+    def fmt(val):
+        return "—" if val is None else str(val)
+
+    def fmt_bool(val):
+        if val is None:
+            return "—"
+        return "Yes" if val == 1 else "No"
+
+    def fmt_submitted(val):
+        if val is None:
+            return "—"
+        # ISO 8601 timestamp → extract HH:MM
+        return val[11:16] if len(val) > 10 else val
+
+    table_rows = ""
+    for row in rows:
+        backfilled = row["submitted_at"] is None
+        row_class = ' class="backfilled"' if backfilled else ""
+        table_rows += (
+            f'<tr{row_class}>'
+            f'<td>{row["date"]}</td>'
+            f'<td>{fmt_submitted(row["submitted_at"])}</td>'
+            f'<td>{fmt(row["mood"])}</td>'
+            f'<td>{fmt(row["energy"])}</td>'
+            f'<td>{fmt(row["anxiety"])}</td>'
+            f'<td>{fmt(row["sleep_hours"])}</td>'
+            f'<td>{fmt(row["sleep_end"])}</td>'
+            f'<td>{fmt_bool(row["nightmares"])}</td>'
+            f'<td>{fmt_bool(row["coffee"])}</td>'
+            f'<td>{fmt_bool(row["melatonin"])}</td>'
+            f'<td>{fmt(row["intrusive"])}</td>'
+            f'<td>{fmt(row["exercise_minutes"])}</td>'
+            f'<td>{fmt(row["sunlight_minutes"])}</td>'
+            f'<td>{fmt(row["hours_worked"])}</td>'
+            f'<td>{fmt(row["meals_yesterday"])}</td>'
+            f'<td>{fmt(row["snacks_yesterday"])}</td>'
+            f'</tr>\n'
+        )
+
+    return HTMLResponse(content=f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checkin History</title>
+    <style>
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            padding: 16px;
+            background: #0d1117; color: #c9d1d9;
+        }}
+        h1 {{ color: #58a6ff; margin-bottom: 20px; text-align: center; font-size: 1.5rem; }}
+        .back-link {{ display: block; text-align: center; margin-bottom: 20px; color: #58a6ff;
+                      text-decoration: none; font-size: 0.95rem; }}
+        .back-link:hover {{ text-decoration: underline; }}
+        .table-wrap {{ overflow-x: auto; border-radius: 8px; border: 1px solid #21262d; }}
+        table {{ border-collapse: collapse; width: 100%; min-width: 900px; font-size: 0.85rem; }}
+        thead tr {{ background: #161b22; }}
+        th {{
+            padding: 10px 12px; text-align: left; color: #8b949e;
+            font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;
+            border-bottom: 1px solid #30363d; white-space: nowrap;
+        }}
+        td {{ padding: 9px 12px; border-bottom: 1px solid #21262d; white-space: nowrap; }}
+        tbody tr:last-child td {{ border-bottom: none; }}
+        tbody tr:hover td {{ background: #161b22; }}
+        tr.backfilled td {{ color: #484f58; }}
+        .count {{ color: #8b949e; font-size: 0.85rem; text-align: center; margin-top: 12px; }}
+    </style>
+</head>
+<body>
+    <h1>Checkin History</h1>
+    <a href="/" class="back-link">← Back to checkin form</a>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Mood</th>
+                    <th>Energy</th>
+                    <th>Anxiety</th>
+                    <th>Sleep h</th>
+                    <th>Wake</th>
+                    <th>Nightmares</th>
+                    <th>Coffee</th>
+                    <th>Melatonin</th>
+                    <th>Intrusive</th>
+                    <th>Exercise min</th>
+                    <th>Sunlight min</th>
+                    <th>Hrs worked</th>
+                    <th>Meals</th>
+                    <th>Snacks</th>
+                </tr>
+            </thead>
+            <tbody>
+{table_rows}            </tbody>
+        </table>
+    </div>
+    <p class="count">{len(rows)} record{"s" if len(rows) != 1 else ""} total &mdash; dimmed rows are backfilled (no submission)</p>
+</body>
+</html>""")
+
+
 @app.get("/status", response_class=JSONResponse)
 async def status():
     conn = await get_db()
