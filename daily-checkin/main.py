@@ -124,11 +124,20 @@ async def submit(
         if result.returncode != 0:
             log.error("ipset add %s failed: %s", ip, result.stderr.decode())
 
+    # Flush must_checkin ipset (stops DNAT rule from matching any device)
+    result = subprocess.run(
+        ["sudo", IPSET_BIN, "flush", "must_checkin"],
+        check=False, capture_output=True,
+    )
+    if result.returncode != 0:
+        log.error("ipset flush must_checkin failed: %s", result.stderr.decode())
+
     # Remove captive portal DNAT rule
     result = subprocess.run(
         [
             "sudo", IPTABLES_BIN, "-t", "nat", "-D", "PREROUTING",
-            "-i", "wlan0", "-p", "tcp", "--dport", "80",
+            "-i", "wlan0", "-m", "set", "--match-set", "must_checkin", "src",
+            "-p", "tcp", "--dport", "80",
             "-j", "DNAT", "--to-destination", f"192.168.22.1:{PORT}",
         ],
         check=False, capture_output=True,

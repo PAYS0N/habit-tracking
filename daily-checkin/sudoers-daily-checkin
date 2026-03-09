@@ -8,6 +8,5 @@
 pays0n ALL=(root) NOPASSWD: /usr/sbin/ipset add allowed_internet * -exist
 pays0n ALL=(root) NOPASSWD: /usr/sbin/ipset del allowed_internet *
 pays0n ALL=(root) NOPASSWD: /usr/sbin/ipset test allowed_internet *
-pays0n ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -D PREROUTING *
-pays0n ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -A PREROUTING *
-pays0n ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -C PREROUTING *
+pays0n ALL=(root) NOPASSWD: /usr/sbin/ipset flush must_checkin
+pays0n ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -D PREROUTING -i wlan0 -m set --match-set must_checkin src -p tcp --dport 80 -j DNAT --to-destination 192.168.22.1\:8900

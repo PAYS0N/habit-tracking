@@ -3,5 +3,5 @@ Description=Run daily checkin block
 
 [Service]
 Type=oneshot
-ExecStart=/home/pays0n/daily-checkin/block.sh
+ExecStart=/home/pays0n/Documents/Projects/habit-tracking/daily-checkin/block.sh
 User=root
