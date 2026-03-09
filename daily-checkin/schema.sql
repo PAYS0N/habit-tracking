@@ -6,21 +6,22 @@ CREATE TABLE IF NOT EXISTS checkins (
 
     -- Sleep
     sleep_hours       REAL,                   -- e.g. 7.5
-    sleep_start       TEXT,                   -- HH:MM (lights out)
+    shower_end        TEXT,                   -- HH:MM (time shower ended / started winding down)
+    fell_asleep       TEXT,                   -- HH:MM (estimated time fell asleep)
     sleep_end         TEXT,                   -- HH:MM (wake time)
     nightmares        INTEGER,                -- 0/1 boolean
 
-    -- Mood & mental state
+    -- Mood & mental state (current morning)
     mood              INTEGER,                -- 1-10
     energy            INTEGER,                -- 1-10
     anxiety           INTEGER,                -- 1-10
-    intrusive         INTEGER,                -- 0-5 (0=none, 5=severe/frequent)
 
     -- Substances
     coffee            INTEGER,                -- 0/1
     melatonin         INTEGER,                -- 0/1
 
-    -- Yesterday's activity
+    -- Yesterday's activity & experience
+    intrusive         INTEGER,                -- 0-5 (0=none, 5=severe/frequent)
     meals_yesterday   INTEGER,
     snacks_yesterday  INTEGER,
     exercise_minutes  INTEGER,                -- intentional activity only

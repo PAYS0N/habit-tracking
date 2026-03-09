@@ -55,9 +55,14 @@
         </div>
 
         <div class="field">
-            <label for="sleep_start">Lights out</label>
-            <div class="hint">Time you tried to fall asleep</div>
-            <input type="time" id="sleep_start" name="sleep_start" required>
+            <label for="shower_end">Shower ended</label>
+            <div class="hint">Time you finished your shower / started winding down</div>
+            <input type="time" id="shower_end" name="shower_end" required>
+        </div>
+
+        <div class="field">
+            <label for="fell_asleep">Estimated time fell asleep</label>
+            <input type="time" id="fell_asleep" name="fell_asleep" required>
         </div>
 
         <div class="field">
@@ -91,12 +96,6 @@
             <input type="number" id="anxiety" name="anxiety" min="1" max="10" required>
         </div>
 
-        <div class="field">
-            <label for="intrusive">Intrusive thoughts / flashbacks (0–5)</label>
-            <div class="hint">0 = none · 1 = one brief instance · 5 = severe or frequent throughout the day</div>
-            <input type="number" id="intrusive" name="intrusive" min="0" max="5" required>
-        </div>
-
         <h2>Substances</h2>
 
         <div class="field">
@@ -118,6 +117,12 @@
         </div>
 
         <h2>Yesterday's Activity</h2>
+
+        <div class="field">
+            <label for="intrusive">Intrusive thoughts / flashbacks (0–5)</label>
+            <div class="hint">0 = none · 1 = one brief instance · 5 = severe or frequent throughout the day</div>
+            <input type="number" id="intrusive" name="intrusive" min="0" max="5" required>
+        </div>
 
         <div class="field">
             <label for="meals_yesterday">Meals</label>

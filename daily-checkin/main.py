@@ -60,15 +60,16 @@ async def index():
 async def submit(
     request: Request,
     sleep_hours: float = Form(...),
-    sleep_start: str = Form(...),
+    shower_end: str = Form(...),
+    fell_asleep: str = Form(...),
     sleep_end: str = Form(...),
     nightmares: int = Form(...),
     mood: int = Form(...),
     energy: int = Form(...),
     anxiety: int = Form(...),
-    intrusive: int = Form(...),
     coffee: int = Form(...),
     melatonin: int = Form(...),
+    intrusive: int = Form(...),
     meals_yesterday: int = Form(...),
     snacks_yesterday: int = Form(...),
     exercise_minutes: int = Form(...),
@@ -100,17 +101,17 @@ async def submit(
     await conn.execute(
         """INSERT OR REPLACE INTO checkins
         (date, submitted_at, device_ip,
-         sleep_hours, sleep_start, sleep_end, nightmares,
-         mood, energy, anxiety, intrusive,
+         sleep_hours, shower_end, fell_asleep, sleep_end, nightmares,
+         mood, energy, anxiety,
          coffee, melatonin,
-         meals_yesterday, snacks_yesterday, exercise_minutes, sunlight_minutes, hours_worked)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+         intrusive, meals_yesterday, snacks_yesterday, exercise_minutes, sunlight_minutes, hours_worked)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             today, now, device_ip,
-            sleep_hours, sleep_start, sleep_end, nightmares,
-            mood, energy, anxiety, intrusive,
+            sleep_hours, shower_end, fell_asleep, sleep_end, nightmares,
+            mood, energy, anxiety,
             coffee, melatonin,
-            meals_yesterday, snacks_yesterday, exercise_minutes, sunlight_minutes, hours_worked,
+            intrusive, meals_yesterday, snacks_yesterday, exercise_minutes, sunlight_minutes, hours_worked,
         ),
     )
     await conn.commit()
