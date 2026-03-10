@@ -1,11 +1,6 @@
-## Project Summary
+# Habit Tracking — Daily Checkin System
 
-**Color by Number** is an Android app (Kotlin + Jetpack Compose) that converts photos into interactive color-by-number puzzles. Users photograph or select an image, configure grid size and color detail, then fill in numbered grid cells to reveal the image. The app also includes a free-draw Pixel Art mode, a public puzzle gallery, puzzle replay, and history.
-
-**Tech Stack**: Kotlin, Jetpack Compose (Material 3), Room/SQLite, CameraX, Navigation Compose
-**Min SDK**: 26 | **Target SDK**: 34
-**Written entirely using Claude Code.**
-
+A FastAPI service deployed on a Raspberry Pi router (kuudra) that enforces daily behavioral checkins via a captive portal (blocking internet access until submission), tracks longitudinal mood and lifestyle metrics (sleep, exercise, food, caffeine, work hours) in SQLite, and provides a history view for analysis. Supports multiple form submissions per day (morning gate + optional updates). Built with Python (FastAPI, uvicorn, aiosqlite), systemd timers for daily enforcement (05:00 block trigger), and Linux firewall rules (ipset/iptables DNAT) for captive portal redirection. **Status:** Deployed and operational on port 8900.
 
 ## Project Rules
 
