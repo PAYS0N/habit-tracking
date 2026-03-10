@@ -30,6 +30,12 @@ COUNTER_FIELDS = [
     "exercise_minutes", "sunlight_minutes", "hours_worked",
 ]
 
+# Counter fields that appear on the "Confirm Yesterday" section of the morning form
+YESTERDAY_COUNTER_FIELDS = [
+    "intrusive", "meals", "snacks",
+    "exercise_minutes", "sunlight_minutes", "hours_worked",
+]
+
 
 async def get_db() -> aiosqlite.Connection:
     global db
@@ -51,7 +57,6 @@ def calc_sleep_hours(fell_asleep: str | None, sleep_end: str | None) -> str:
         se_h, se_m = map(int, sleep_end.split(":"))
         fa_mins = fa_h * 60 + fa_m
         se_mins = se_h * 60 + se_m
-        # Handle midnight crossover (fell asleep before midnight, woke after)
         if se_mins <= fa_mins:
             diff = (1440 - fa_mins) + se_mins
         else:
@@ -79,7 +84,6 @@ async def shutdown():
 @app.get("/", response_class=HTMLResponse)
 async def index():
     form_html = (STATIC_DIR / "form.html").read_text()
-    # Query yesterday's last submission for counter autofill
     conn = await get_db()
     yesterday = (date.today() - timedelta(days=1)).isoformat()
     rows = await conn.execute_fetchall(
@@ -88,12 +92,13 @@ async def index():
     )
     if rows:
         row = rows[0]
-        for field in COUNTER_FIELDS:
+        # Autofill only the "Confirm Yesterday" fields (yesterday_ prefixed ids)
+        for field in YESTERDAY_COUNTER_FIELDS:
             val = row[field]
             if val is not None:
                 form_html = form_html.replace(
-                    f'id="{field}"',
-                    f'id="{field}" value="{val}"',
+                    f'id="yesterday_{field}"',
+                    f'id="yesterday_{field}" value="{val}"',
                 )
     return HTMLResponse(content=form_html)
 
@@ -101,6 +106,14 @@ async def index():
 @app.post("/submit", response_class=HTMLResponse)
 async def submit(
     request: Request,
+    # Yesterday confirmation (required)
+    yesterday_intrusive: int = Form(...),
+    yesterday_meals: int = Form(...),
+    yesterday_snacks: int = Form(...),
+    yesterday_exercise_minutes: int = Form(...),
+    yesterday_sunlight_minutes: int = Form(...),
+    yesterday_hours_worked: float = Form(...),
+    # Last night (sleep)
     shower_end: Optional[str] = Form(None),
     no_shower: Optional[int] = Form(None),
     fell_asleep: Optional[str] = Form(None),
@@ -108,16 +121,18 @@ async def submit(
     no_sleep: Optional[int] = Form(None),
     nightmares: int = Form(...),
     melatonin: int = Form(...),
+    # Mental state (required)
     mood: int = Form(...),
     energy: int = Form(...),
     anxiety: int = Form(...),
-    coffee: int = Form(...),
-    intrusive: int = Form(...),
-    meals: int = Form(...),
-    snacks: int = Form(...),
-    exercise_minutes: int = Form(...),
-    sunlight_minutes: int = Form(...),
-    hours_worked: float = Form(...),
+    # Today so far (all optional)
+    coffee: Optional[int] = Form(None),
+    intrusive: Optional[int] = Form(None),
+    meals: Optional[int] = Form(None),
+    snacks: Optional[int] = Form(None),
+    exercise_minutes: Optional[int] = Form(None),
+    sunlight_minutes: Optional[int] = Form(None),
+    hours_worked: Optional[float] = Form(None),
 ):
     # Server-side sleep validation
     if not shower_end and not no_shower:
@@ -133,6 +148,7 @@ async def submit(
 
     conn = await get_db()
     today = date.today().isoformat()
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
     now = datetime.now().isoformat()
     device_ip = request.client.host if request.client else None
 
@@ -151,6 +167,47 @@ async def submit(
                 (d.isoformat(),),
             )
             d += timedelta(days=1)
+
+    # Counter validation for yesterday's confirmed values
+    yesterday_confirmed = {
+        "intrusive": yesterday_intrusive, "meals": yesterday_meals,
+        "snacks": yesterday_snacks, "exercise_minutes": yesterday_exercise_minutes,
+        "sunlight_minutes": yesterday_sunlight_minutes, "hours_worked": yesterday_hours_worked,
+    }
+    yesterday_rows = await conn.execute_fetchall(
+        "SELECT * FROM checkins WHERE date = ? ORDER BY submission_number DESC",
+        (yesterday,),
+    )
+    if yesterday_rows:
+        for field, new_val in yesterday_confirmed.items():
+            max_val = max(
+                (r[field] for r in yesterday_rows if r[field] is not None),
+                default=None,
+            )
+            if max_val is not None and new_val < max_val:
+                return HTMLResponse(
+                    content=f"<p style='color:red'>Yesterday's {field} cannot decrease (current: {max_val}, submitted: {new_val}).</p>",
+                    status_code=400,
+                )
+
+    # Insert yesterday's retroactive row (sub#N+1)
+    yesterday_max_sub = await conn.execute_fetchall(
+        "SELECT MAX(submission_number) as max_sub FROM checkins WHERE date = ?",
+        (yesterday,),
+    )
+    yesterday_next_sub = (yesterday_max_sub[0]["max_sub"] or 0) + 1
+
+    await conn.execute(
+        """INSERT INTO checkins
+        (date, submission_number, submitted_at, device_ip,
+         intrusive, meals, snacks, exercise_minutes, sunlight_minutes, hours_worked)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            yesterday, yesterday_next_sub, now, device_ip,
+            yesterday_intrusive, yesterday_meals, yesterday_snacks,
+            yesterday_exercise_minutes, yesterday_sunlight_minutes, yesterday_hours_worked,
+        ),
+    )
 
     # Insert today's submission_number=1 row
     await conn.execute(
@@ -180,7 +237,7 @@ async def submit(
         if result.returncode != 0:
             log.error("ipset add %s failed: %s", ip, result.stderr.decode())
 
-    # Flush must_checkin ipset (stops DNAT rule from matching any device)
+    # Flush must_checkin ipset
     result = subprocess.run(
         ["sudo", IPSET_BIN, "flush", "must_checkin"],
         check=False, capture_output=True,
@@ -233,7 +290,6 @@ async def submit(
 @app.get("/update", response_class=HTMLResponse)
 async def update_form():
     form_html = (STATIC_DIR / "update.html").read_text()
-    # Query today's last submission for counter pre-fill
     conn = await get_db()
     today = date.today().isoformat()
     rows = await conn.execute_fetchall(
@@ -298,7 +354,6 @@ async def update_submit(
             new_val = submitted_counters[field]
             if new_val is None:
                 continue
-            # Find max of this field across today's rows
             max_val = max(
                 (r[field] for r in today_rows if r[field] is not None),
                 default=None,
@@ -375,7 +430,6 @@ async def history():
     def fmt_submitted(val):
         if val is None:
             return "—"
-        # ISO 8601 timestamp → extract HH:MM
         return val[11:16] if len(val) > 10 else val
 
     table_rows = ""
@@ -481,7 +535,6 @@ async def status():
         (today,),
     )
     today_submitted = bool(row and row[0]["submitted_at"] is not None)
-    # Check if any device is missing from ipset (i.e. blocked)
     blocked = False
     for ip in DEVICES:
         result = subprocess.run(

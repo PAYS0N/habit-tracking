@@ -52,7 +52,42 @@
     <h1>Daily Checkin</h1>
     <form action="/submit" method="POST">
 
-        <h2>Sleep</h2>
+        <h2>Confirm Yesterday</h2>
+
+        <div class="field">
+            <label for="yesterday_intrusive">Intrusive thoughts / flashbacks (0–5)</label>
+            <div class="hint">0 = none · 1 = one brief instance · 5 = severe or frequent throughout the day</div>
+            <input type="number" id="yesterday_intrusive" name="yesterday_intrusive" min="0" max="5" required>
+        </div>
+
+        <div class="field">
+            <label for="yesterday_meals">Meals</label>
+            <input type="number" id="yesterday_meals" name="yesterday_meals" min="0" max="10" required>
+        </div>
+
+        <div class="field">
+            <label for="yesterday_snacks">Non-meal snacks</label>
+            <input type="number" id="yesterday_snacks" name="yesterday_snacks" min="0" max="20" required>
+        </div>
+
+        <div class="field">
+            <label for="yesterday_exercise_minutes">Exercise (minutes)</label>
+            <div class="hint">Intentional activity only (walking, gym, cycling, yoga). Not passive movement. Enter 0 if none.</div>
+            <input type="number" id="yesterday_exercise_minutes" name="yesterday_exercise_minutes" min="0" max="480" required>
+        </div>
+
+        <div class="field">
+            <label for="yesterday_sunlight_minutes">Direct sunlight (minutes)</label>
+            <div class="hint">Sun on skin/eyes during daylight hours. Heavy overcast or nighttime doesn't count.</div>
+            <input type="number" id="yesterday_sunlight_minutes" name="yesterday_sunlight_minutes" min="0" max="480" required>
+        </div>
+
+        <div class="field">
+            <label for="yesterday_hours_worked">Hours worked</label>
+            <input type="number" id="yesterday_hours_worked" name="yesterday_hours_worked" min="0" max="24" step="0.5" required>
+        </div>
+
+        <h2>Last Night</h2>
 
         <div class="field">
             <label for="shower_end">Shower ended</label>
@@ -86,6 +121,15 @@
             </div>
         </div>
 
+        <div class="field">
+            <label>Melatonin last night?</label>
+            <div class="hint">Did you take melatonin before sleep?</div>
+            <div class="toggle-group">
+                <label><input type="radio" name="melatonin" value="0" required><span>No</span></label>
+                <label><input type="radio" name="melatonin" value="1"><span>Yes</span></label>
+            </div>
+        </div>
+
         <h2>Mental State</h2>
         <div class="hint" style="margin-bottom:10px;">Rate your current state this morning.</div>
 
@@ -104,56 +148,42 @@
             <input type="number" id="anxiety" name="anxiety" min="1" max="10" required>
         </div>
 
-        <h2>Substances</h2>
+        <h2>Today So Far</h2>
+        <div class="hint" style="margin-bottom:10px;">All optional. Fill in what applies so far; update later via /update.</div>
 
         <div class="field">
             <label for="coffee">Coffee (cups so far)</label>
-            <div class="hint">Cumulative count. Enter 0 if none.</div>
-            <input type="number" id="coffee" name="coffee" min="0" max="20" required>
+            <input type="number" id="coffee" name="coffee" min="0" max="20">
         </div>
-
-        <div class="field">
-            <label>Melatonin last night?</label>
-            <div class="hint">Did you take melatonin before sleep?</div>
-            <div class="toggle-group">
-                <label><input type="radio" name="melatonin" value="0" required><span>No</span></label>
-                <label><input type="radio" name="melatonin" value="1"><span>Yes</span></label>
-            </div>
-        </div>
-
-        <h2>Today So Far</h2>
 
         <div class="field">
             <label for="intrusive">Intrusive thoughts / flashbacks (0–5)</label>
-            <div class="hint">0 = none · 1 = one brief instance · 5 = severe or frequent throughout the day</div>
-            <input type="number" id="intrusive" name="intrusive" min="0" max="5" required>
+            <input type="number" id="intrusive" name="intrusive" min="0" max="5">
         </div>
 
         <div class="field">
             <label for="meals">Meals</label>
-            <input type="number" id="meals" name="meals" min="0" max="10" required>
+            <input type="number" id="meals" name="meals" min="0" max="10">
         </div>
 
         <div class="field">
             <label for="snacks">Non-meal snacks</label>
-            <input type="number" id="snacks" name="snacks" min="0" max="20" required>
+            <input type="number" id="snacks" name="snacks" min="0" max="20">
         </div>
 
         <div class="field">
             <label for="exercise_minutes">Exercise (minutes)</label>
-            <div class="hint">Intentional activity only (walking, gym, cycling, yoga). Not passive movement. Enter 0 if none.</div>
-            <input type="number" id="exercise_minutes" name="exercise_minutes" min="0" max="480" required>
+            <input type="number" id="exercise_minutes" name="exercise_minutes" min="0" max="480">
         </div>
 
         <div class="field">
             <label for="sunlight_minutes">Direct sunlight (minutes)</label>
-            <div class="hint">Sun on skin/eyes during daylight hours. Heavy overcast or nighttime doesn't count. Estimate conservatively.</div>
-            <input type="number" id="sunlight_minutes" name="sunlight_minutes" min="0" max="480" required>
+            <input type="number" id="sunlight_minutes" name="sunlight_minutes" min="0" max="480">
         </div>
 
         <div class="field">
             <label for="hours_worked">Hours worked</label>
-            <input type="number" id="hours_worked" name="hours_worked" min="0" max="24" step="0.5" required>
+            <input type="number" id="hours_worked" name="hours_worked" min="0" max="24" step="0.5">
         </div>
 
         <button type="submit">Submit Checkin</button>
