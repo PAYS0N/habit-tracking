@@ -80,7 +80,7 @@ Counter fields on the morning form appear in two sections:
 ## API Endpoints
 
 ### `GET /`
-Serves `static/form.html`. Queries yesterday's last submission and injects `value` attributes into the `yesterday_*` counter fields for autofill. No authentication.
+Checks if today already has a `submission_number=1` row with `submitted_at IS NOT NULL`. If it does, redirects to `GET /update` (status 303). Otherwise, serves `static/form.html`, queries yesterday's last submission, and injects `value` attributes into the `yesterday_*` counter fields for autofill. No authentication.
 
 ### `POST /submit`
 Morning gate form submission. Two DB inserts in order:
