@@ -6,7 +6,7 @@ from typing import Optional
 
 import aiosqlite
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 PORT = 8900
 DB_PATH = Path(__file__).parent / "checkin.db"
@@ -83,8 +83,18 @@ async def shutdown():
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    form_html = (STATIC_DIR / "form.html").read_text()
     conn = await get_db()
+    today = date.today().isoformat()
+
+    # Check if today already has submission_number=1 with submitted_at IS NOT NULL
+    today_submitted = await conn.execute_fetchall(
+        "SELECT id FROM checkins WHERE date = ? AND submission_number = 1 AND submitted_at IS NOT NULL",
+        (today,),
+    )
+    if today_submitted:
+        return RedirectResponse(url="/update", status_code=303)
+
+    form_html = (STATIC_DIR / "form.html").read_text()
     yesterday = (date.today() - timedelta(days=1)).isoformat()
     rows = await conn.execute_fetchall(
         "SELECT * FROM checkins WHERE date = ? ORDER BY submission_number DESC LIMIT 1",
