@@ -35,6 +35,11 @@
         .toggle-group label:has(input:checked) {
             border-color: #58a6ff; background: #0d2137;
         }
+        .fallback-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+        .fallback-row input[type="checkbox"] {
+            width: 18px; height: 18px; accent-color: #58a6ff; flex-shrink: 0;
+        }
+        .fallback-row label { display: inline; font-weight: 400; font-size: 0.85rem; color: #8b949e; margin-bottom: 0; }
         button[type="submit"] {
             width: 100%; padding: 14px; margin-top: 24px; border: none; border-radius: 8px;
             background: #238636; color: #fff; font-size: 1.1rem; font-weight: 600;
@@ -50,24 +55,27 @@
         <h2>Sleep</h2>
 
         <div class="field">
-            <label for="sleep_hours">Hours of sleep</label>
-            <input type="number" id="sleep_hours" name="sleep_hours" min="0" max="24" step="0.5" required>
-        </div>
-
-        <div class="field">
             <label for="shower_end">Shower ended</label>
             <div class="hint">Time you finished your shower / started winding down</div>
-            <input type="time" id="shower_end" name="shower_end" required>
+            <input type="time" id="shower_end" name="shower_end">
+            <div class="fallback-row">
+                <input type="checkbox" id="no_shower" name="no_shower" value="1">
+                <label for="no_shower">No shower</label>
+            </div>
         </div>
 
         <div class="field">
             <label for="fell_asleep">Estimated time fell asleep</label>
-            <input type="time" id="fell_asleep" name="fell_asleep" required>
+            <input type="time" id="fell_asleep" name="fell_asleep">
         </div>
 
         <div class="field">
             <label for="sleep_end">Wake time</label>
-            <input type="time" id="sleep_end" name="sleep_end" required>
+            <input type="time" id="sleep_end" name="sleep_end">
+            <div class="fallback-row">
+                <input type="checkbox" id="no_sleep" name="no_sleep" value="1">
+                <label for="no_sleep">No sleep</label>
+            </div>
         </div>
 
         <div class="field">
@@ -99,12 +107,9 @@
         <h2>Substances</h2>
 
         <div class="field">
-            <label>Coffee this morning?</label>
-            <div class="hint">Have you had coffee before filling this out?</div>
-            <div class="toggle-group">
-                <label><input type="radio" name="coffee" value="0" required><span>No</span></label>
-                <label><input type="radio" name="coffee" value="1"><span>Yes</span></label>
-            </div>
+            <label for="coffee">Coffee (cups so far)</label>
+            <div class="hint">Cumulative count. Enter 0 if none.</div>
+            <input type="number" id="coffee" name="coffee" min="0" max="20" required>
         </div>
 
         <div class="field">
@@ -116,7 +121,7 @@
             </div>
         </div>
 
-        <h2>Yesterday's Activity</h2>
+        <h2>Today So Far</h2>
 
         <div class="field">
             <label for="intrusive">Intrusive thoughts / flashbacks (0–5)</label>
@@ -125,13 +130,13 @@
         </div>
 
         <div class="field">
-            <label for="meals_yesterday">Meals</label>
-            <input type="number" id="meals_yesterday" name="meals_yesterday" min="0" max="10" required>
+            <label for="meals">Meals</label>
+            <input type="number" id="meals" name="meals" min="0" max="10" required>
         </div>
 
         <div class="field">
-            <label for="snacks_yesterday">Non-meal snacks</label>
-            <input type="number" id="snacks_yesterday" name="snacks_yesterday" min="0" max="20" required>
+            <label for="snacks">Non-meal snacks</label>
+            <input type="number" id="snacks" name="snacks" min="0" max="20" required>
         </div>
 
         <div class="field">

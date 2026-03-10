@@ -9,6 +9,6 @@
 
 ## Open Items
 
-- allow multiple submissions, but new submission type for subsequent submissions
+- multiple submissions (see cdocs/multiple-submissions.md for full design)
 - iptables/ipset persistence across reboot (DNAT rule and `must_checkin` set lost on reboot; block timer recreates at next 05:00)
 - HTTPS / trusted cert for captive portal

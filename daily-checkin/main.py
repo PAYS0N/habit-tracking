@@ -2,6 +2,7 @@ import logging
 import subprocess
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Optional
 
 import aiosqlite
 from fastapi import FastAPI, Form, Request
@@ -24,6 +25,11 @@ logging.basicConfig(level=logging.INFO)
 app = FastAPI()
 db: aiosqlite.Connection | None = None
 
+COUNTER_FIELDS = [
+    "coffee", "intrusive", "meals", "snacks",
+    "exercise_minutes", "sunlight_minutes", "hours_worked",
+]
+
 
 async def get_db() -> aiosqlite.Connection:
     global db
@@ -34,6 +40,26 @@ async def get_db() -> aiosqlite.Connection:
         await db.executescript(schema)
         await db.commit()
     return db
+
+
+def calc_sleep_hours(fell_asleep: str | None, sleep_end: str | None) -> str:
+    """Calculate sleep hours from fell_asleep and sleep_end HH:MM strings."""
+    if not fell_asleep or not sleep_end:
+        return "—"
+    try:
+        fa_h, fa_m = map(int, fell_asleep.split(":"))
+        se_h, se_m = map(int, sleep_end.split(":"))
+        fa_mins = fa_h * 60 + fa_m
+        se_mins = se_h * 60 + se_m
+        # Handle midnight crossover (fell asleep before midnight, woke after)
+        if se_mins <= fa_mins:
+            diff = (1440 - fa_mins) + se_mins
+        else:
+            diff = se_mins - fa_mins
+        hours = diff / 60
+        return f"{hours:.1f}"
+    except (ValueError, AttributeError):
+        return "—"
 
 
 @app.on_event("startup")
@@ -53,29 +79,58 @@ async def shutdown():
 @app.get("/", response_class=HTMLResponse)
 async def index():
     form_html = (STATIC_DIR / "form.html").read_text()
+    # Query yesterday's last submission for counter autofill
+    conn = await get_db()
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    rows = await conn.execute_fetchall(
+        "SELECT * FROM checkins WHERE date = ? ORDER BY submission_number DESC LIMIT 1",
+        (yesterday,),
+    )
+    if rows:
+        row = rows[0]
+        for field in COUNTER_FIELDS:
+            val = row[field]
+            if val is not None:
+                form_html = form_html.replace(
+                    f'id="{field}"',
+                    f'id="{field}" value="{val}"',
+                )
     return HTMLResponse(content=form_html)
 
 
 @app.post("/submit", response_class=HTMLResponse)
 async def submit(
     request: Request,
-    sleep_hours: float = Form(...),
-    shower_end: str = Form(...),
-    fell_asleep: str = Form(...),
-    sleep_end: str = Form(...),
+    shower_end: Optional[str] = Form(None),
+    no_shower: Optional[int] = Form(None),
+    fell_asleep: Optional[str] = Form(None),
+    sleep_end: Optional[str] = Form(None),
+    no_sleep: Optional[int] = Form(None),
     nightmares: int = Form(...),
+    melatonin: int = Form(...),
     mood: int = Form(...),
     energy: int = Form(...),
     anxiety: int = Form(...),
     coffee: int = Form(...),
-    melatonin: int = Form(...),
     intrusive: int = Form(...),
-    meals_yesterday: int = Form(...),
-    snacks_yesterday: int = Form(...),
+    meals: int = Form(...),
+    snacks: int = Form(...),
     exercise_minutes: int = Form(...),
     sunlight_minutes: int = Form(...),
     hours_worked: float = Form(...),
 ):
+    # Server-side sleep validation
+    if not shower_end and not no_shower:
+        return HTMLResponse(
+            content="<p style='color:red'>Either provide shower end time or check 'No shower'.</p>",
+            status_code=400,
+        )
+    if (not fell_asleep or not sleep_end) and not no_sleep:
+        return HTMLResponse(
+            content="<p style='color:red'>Either provide both fell asleep and wake time, or check 'No sleep'.</p>",
+            status_code=400,
+        )
+
     conn = await get_db()
     today = date.today().isoformat()
     now = datetime.now().isoformat()
@@ -92,26 +147,26 @@ async def submit(
         d = gap_start
         while d <= gap_end:
             await conn.execute(
-                "INSERT OR IGNORE INTO checkins (date) VALUES (?)",
+                "INSERT INTO checkins (date, submission_number) VALUES (?, 1)",
                 (d.isoformat(),),
             )
             d += timedelta(days=1)
 
-    # Insert today's row
+    # Insert today's submission_number=1 row
     await conn.execute(
-        """INSERT OR REPLACE INTO checkins
-        (date, submitted_at, device_ip,
-         sleep_hours, shower_end, fell_asleep, sleep_end, nightmares,
+        """INSERT INTO checkins
+        (date, submission_number, submitted_at, device_ip,
+         shower_end, no_shower, fell_asleep, sleep_end, no_sleep, nightmares, melatonin,
          mood, energy, anxiety,
-         coffee, melatonin,
-         intrusive, meals_yesterday, snacks_yesterday, exercise_minutes, sunlight_minutes, hours_worked)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+         coffee, intrusive, meals, snacks, exercise_minutes, sunlight_minutes, hours_worked)
+        VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             today, now, device_ip,
-            sleep_hours, shower_end, fell_asleep, sleep_end, nightmares,
+            shower_end or None, 1 if no_shower else 0,
+            fell_asleep or None, sleep_end or None, 1 if no_sleep else 0,
+            nightmares, melatonin,
             mood, energy, anxiety,
-            coffee, melatonin,
-            intrusive, meals_yesterday, snacks_yesterday, exercise_minutes, sunlight_minutes, hours_worked,
+            coffee, intrusive, meals, snacks, exercise_minutes, sunlight_minutes, hours_worked,
         ),
     )
     await conn.commit()
@@ -159,6 +214,9 @@ async def submit(
         .success {{ background: #0d2818; border: 1px solid #238636; border-radius: 8px;
                     padding: 24px; margin-top: 40px; }}
         h1 {{ color: #58a6ff; }}
+        a {{ color: #58a6ff; text-decoration: none; }}
+        a:hover {{ text-decoration: underline; }}
+        .update-link {{ display: block; margin-top: 16px; font-size: 0.95rem; }}
     </style>
 </head>
 <body>
@@ -166,6 +224,134 @@ async def submit(
         <h1>Checkin Complete</h1>
         <p>Submitted for <strong>{today}</strong>.</p>
         <p>All devices are unblocked. Internet restored.</p>
+        <a href="/update" class="update-link">Submit another update later today →</a>
+    </div>
+</body>
+</html>""")
+
+
+@app.get("/update", response_class=HTMLResponse)
+async def update_form():
+    form_html = (STATIC_DIR / "update.html").read_text()
+    # Query today's last submission for counter pre-fill
+    conn = await get_db()
+    today = date.today().isoformat()
+    rows = await conn.execute_fetchall(
+        "SELECT * FROM checkins WHERE date = ? ORDER BY submission_number DESC LIMIT 1",
+        (today,),
+    )
+    if rows:
+        row = rows[0]
+        for field in COUNTER_FIELDS:
+            val = row[field]
+            if val is not None:
+                form_html = form_html.replace(
+                    f'id="{field}"',
+                    f'id="{field}" value="{val}"',
+                )
+    return HTMLResponse(content=form_html)
+
+
+@app.post("/update", response_class=HTMLResponse)
+async def update_submit(
+    request: Request,
+    mood: Optional[int] = Form(None),
+    energy: Optional[int] = Form(None),
+    anxiety: Optional[int] = Form(None),
+    coffee: Optional[int] = Form(None),
+    intrusive: Optional[int] = Form(None),
+    meals: Optional[int] = Form(None),
+    snacks: Optional[int] = Form(None),
+    exercise_minutes: Optional[int] = Form(None),
+    sunlight_minutes: Optional[int] = Form(None),
+    hours_worked: Optional[float] = Form(None),
+):
+    conn = await get_db()
+    today = date.today().isoformat()
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    now = datetime.now().isoformat()
+    device_ip = request.client.host if request.client else None
+
+    # Lock check: reject if tomorrow has a submission_number=1 row
+    lock_row = await conn.execute_fetchall(
+        "SELECT id FROM checkins WHERE date = ? AND submission_number = 1 AND submitted_at IS NOT NULL",
+        (tomorrow,),
+    )
+    if lock_row:
+        return HTMLResponse(
+            content="<p style='color:red'>Today's checkin is finalized. No further updates allowed.</p>",
+            status_code=400,
+        )
+
+    # Counter validation: each submitted counter must be >= current day's max
+    today_rows = await conn.execute_fetchall(
+        "SELECT * FROM checkins WHERE date = ? ORDER BY submission_number DESC",
+        (today,),
+    )
+    submitted_counters = {
+        "coffee": coffee, "intrusive": intrusive, "meals": meals,
+        "snacks": snacks, "exercise_minutes": exercise_minutes,
+        "sunlight_minutes": sunlight_minutes, "hours_worked": hours_worked,
+    }
+    if today_rows:
+        for field in COUNTER_FIELDS:
+            new_val = submitted_counters[field]
+            if new_val is None:
+                continue
+            # Find max of this field across today's rows
+            max_val = max(
+                (r[field] for r in today_rows if r[field] is not None),
+                default=None,
+            )
+            if max_val is not None and new_val < max_val:
+                return HTMLResponse(
+                    content=f"<p style='color:red'>{field} cannot decrease (current: {max_val}, submitted: {new_val}).</p>",
+                    status_code=400,
+                )
+
+    # Determine next submission number
+    max_sub_row = await conn.execute_fetchall(
+        "SELECT MAX(submission_number) as max_sub FROM checkins WHERE date = ?",
+        (today,),
+    )
+    next_sub = (max_sub_row[0]["max_sub"] or 0) + 1
+
+    await conn.execute(
+        """INSERT INTO checkins
+        (date, submission_number, submitted_at, device_ip,
+         mood, energy, anxiety,
+         coffee, intrusive, meals, snacks, exercise_minutes, sunlight_minutes, hours_worked)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            today, next_sub, now, device_ip,
+            mood, energy, anxiety,
+            coffee, intrusive, meals, snacks, exercise_minutes, sunlight_minutes, hours_worked,
+        ),
+    )
+    await conn.commit()
+
+    return HTMLResponse(content=f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Update Saved</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+               max-width: 480px; margin: 40px auto; padding: 0 16px; text-align: center;
+               background: #0d1117; color: #c9d1d9; }}
+        .success {{ background: #0d2818; border: 1px solid #238636; border-radius: 8px;
+                    padding: 24px; margin-top: 40px; }}
+        h1 {{ color: #58a6ff; }}
+        a {{ color: #58a6ff; text-decoration: none; }}
+        a:hover {{ text-decoration: underline; }}
+    </style>
+</head>
+<body>
+    <div class="success">
+        <h1>Update Saved</h1>
+        <p>Submission #{next_sub} for <strong>{today}</strong>.</p>
+        <a href="/update">Submit another update</a> · <a href="/history">View history</a>
     </div>
 </body>
 </html>""")
@@ -175,7 +361,7 @@ async def submit(
 async def history():
     conn = await get_db()
     rows = await conn.execute_fetchall(
-        "SELECT * FROM checkins ORDER BY date DESC"
+        "SELECT * FROM checkins ORDER BY date DESC, submission_number DESC"
     )
 
     def fmt(val):
@@ -196,24 +382,26 @@ async def history():
     for row in rows:
         backfilled = row["submitted_at"] is None
         row_class = ' class="backfilled"' if backfilled else ""
+        sleep_h = calc_sleep_hours(row["fell_asleep"], row["sleep_end"])
         table_rows += (
             f'<tr{row_class}>'
             f'<td>{row["date"]}</td>'
+            f'<td>{row["submission_number"]}</td>'
             f'<td>{fmt_submitted(row["submitted_at"])}</td>'
             f'<td>{fmt(row["mood"])}</td>'
             f'<td>{fmt(row["energy"])}</td>'
             f'<td>{fmt(row["anxiety"])}</td>'
-            f'<td>{fmt(row["sleep_hours"])}</td>'
+            f'<td>{sleep_h}</td>'
             f'<td>{fmt(row["sleep_end"])}</td>'
             f'<td>{fmt_bool(row["nightmares"])}</td>'
-            f'<td>{fmt_bool(row["coffee"])}</td>'
+            f'<td>{fmt(row["coffee"])}</td>'
             f'<td>{fmt_bool(row["melatonin"])}</td>'
             f'<td>{fmt(row["intrusive"])}</td>'
             f'<td>{fmt(row["exercise_minutes"])}</td>'
             f'<td>{fmt(row["sunlight_minutes"])}</td>'
             f'<td>{fmt(row["hours_worked"])}</td>'
-            f'<td>{fmt(row["meals_yesterday"])}</td>'
-            f'<td>{fmt(row["snacks_yesterday"])}</td>'
+            f'<td>{fmt(row["meals"])}</td>'
+            f'<td>{fmt(row["snacks"])}</td>'
             f'</tr>\n'
         )
 
@@ -235,7 +423,7 @@ async def history():
                       text-decoration: none; font-size: 0.95rem; }}
         .back-link:hover {{ text-decoration: underline; }}
         .table-wrap {{ overflow-x: auto; border-radius: 8px; border: 1px solid #21262d; }}
-        table {{ border-collapse: collapse; width: 100%; min-width: 900px; font-size: 0.85rem; }}
+        table {{ border-collapse: collapse; width: 100%; min-width: 950px; font-size: 0.85rem; }}
         thead tr {{ background: #161b22; }}
         th {{
             padding: 10px 12px; text-align: left; color: #8b949e;
@@ -251,12 +439,13 @@ async def history():
 </head>
 <body>
     <h1>Checkin History</h1>
-    <a href="/" class="back-link">← Back to checkin form</a>
+    <a href="/" class="back-link">&larr; Back to checkin form</a>
     <div class="table-wrap">
         <table>
             <thead>
                 <tr>
                     <th>Date</th>
+                    <th>Sub#</th>
                     <th>Time</th>
                     <th>Mood</th>
                     <th>Energy</th>
@@ -288,7 +477,8 @@ async def status():
     conn = await get_db()
     today = date.today().isoformat()
     row = await conn.execute_fetchall(
-        "SELECT submitted_at FROM checkins WHERE date = ?", (today,)
+        "SELECT submitted_at FROM checkins WHERE date = ? AND submission_number = 1",
+        (today,),
     )
     today_submitted = bool(row and row[0]["submitted_at"] is not None)
     # Check if any device is missing from ipset (i.e. blocked)
