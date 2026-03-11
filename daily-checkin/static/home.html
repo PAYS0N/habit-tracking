@@ -8,36 +8,272 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            max-width: 480px; margin: 0 auto; padding: 16px;
+            max-width: 480px; margin: 0 auto; padding: 24px 16px 40px;
             background: #0d1117; color: #c9d1d9;
-            display: flex; align-items: center; justify-content: center; min-height: 100vh;
         }
-        .container {
-            width: 100%; text-align: center;
+        h1 { color: #58a6ff; margin-bottom: 28px; text-align: center; font-size: 1.8rem; }
+        h2 {
+            color: #8b949e; font-size: 0.75rem; text-transform: uppercase;
+            letter-spacing: 0.06em; margin: 24px 0 12px;
+            border-bottom: 1px solid #21262d; padding-bottom: 6px;
         }
-        h1 { color: #58a6ff; margin-bottom: 40px; font-size: 1.8rem; }
-        .button-group { display: flex; flex-direction: column; gap: 16px; }
-        a {
-            display: block; padding: 18px; border-radius: 8px; text-decoration: none;
-            font-size: 1.1rem; font-weight: 600; transition: background 0.2s;
+        .btn-group { display: flex; flex-direction: column; gap: 12px; }
+        .btn {
+            display: block; padding: 16px; border-radius: 8px; text-decoration: none;
+            font-size: 1rem; font-weight: 600; text-align: center;
+            border: none; cursor: pointer; color: #fff; transition: background 0.15s;
         }
-        .btn-primary {
-            background: #238636; color: #fff;
-        }
+        .btn-primary { background: #238636; }
         .btn-primary:hover { background: #2ea043; }
-        .btn-secondary {
-            background: #1f6feb; color: #fff;
-        }
+        .btn-secondary { background: #1f6feb; }
         .btn-secondary:hover { background: #388bfd; }
+
+        /* Quick log grid */
+        .quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .btn-quick {
+            padding: 14px 8px; border-radius: 8px; border: 1px solid #30363d;
+            background: #161b22; color: #c9d1d9; font-size: 0.95rem; font-weight: 600;
+            cursor: pointer; text-align: center; transition: background 0.15s, border-color 0.15s;
+        }
+        .btn-quick:hover { background: #1c2128; border-color: #58a6ff; }
+        .btn-quick.active { border-color: #58a6ff; background: #0d2137; color: #58a6ff; }
+
+        /* Confirm banner */
+        .confirm-msg {
+            display: none; text-align: center; padding: 10px; margin-top: 10px;
+            background: #0d2818; border: 1px solid #238636; border-radius: 6px;
+            color: #3fb950; font-weight: 600; font-size: 0.9rem;
+        }
+        .confirm-msg.visible { display: block; }
+
+        /* Inline form containers */
+        .quick-form-wrap { display: none; margin-top: 10px; }
+        .quick-form-wrap.visible { display: block; }
+        .quick-form {
+            background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px;
+        }
+        .field { margin-bottom: 12px; }
+        .field-label {
+            display: block; font-size: 0.82rem; font-weight: 600;
+            margin-bottom: 5px; color: #8b949e;
+        }
+        input[type="text"], input[type="number"], input[type="time"] {
+            width: 100%; padding: 9px 10px; border: 1px solid #30363d; border-radius: 6px;
+            background: #0d1117; color: #c9d1d9; font-size: 0.95rem;
+        }
+        input:focus { outline: none; border-color: #58a6ff; }
+        .toggle-group { display: flex; gap: 8px; }
+        .toggle-group label {
+            flex: 1; text-align: center; padding: 8px 4px; border: 1px solid #30363d;
+            border-radius: 6px; cursor: pointer; font-size: 0.85rem;
+            background: #0d1117; color: #c9d1d9; margin: 0;
+        }
+        .toggle-group input[type="radio"] { display: none; }
+        .toggle-group label:has(input:checked) {
+            border-color: #58a6ff; background: #0d2137; color: #58a6ff; font-weight: 600;
+        }
+        .btn-log {
+            width: 100%; padding: 11px; margin-top: 14px; border: none; border-radius: 6px;
+            background: #238636; color: #fff; font-size: 0.95rem; font-weight: 600; cursor: pointer;
+        }
+        .btn-log:active { background: #2ea043; }
+        .medicine-fields { display: none; margin-top: 10px; }
+        .medicine-fields.visible { display: block; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Daily Checkin</h1>
-        <div class="button-group">
-            <a href="/checkin" class="btn-primary">Submit Checkin</a>
-            <a href="/history" class="btn-secondary">View History</a>
+    <h1>Daily Checkin</h1>
+
+    <h2>Checkin</h2>
+    <div class="btn-group">
+        <a href="/checkin" class="btn btn-primary">Submit Checkin</a>
+        <a href="/history" class="btn btn-secondary">View History</a>
+    </div>
+
+    <h2>Quick Log</h2>
+    <div class="quick-grid">
+        <button class="btn-quick" id="btn-food" onclick="showForm('food')">Food</button>
+        <button class="btn-quick" id="btn-coffee" onclick="logCoffee(this)">Coffee</button>
+        <button class="btn-quick" id="btn-headache" onclick="showForm('headache')">Headache</button>
+        <button class="btn-quick" id="btn-bowel" onclick="showForm('bowel')">Bowel</button>
+    </div>
+
+    <div class="confirm-msg" id="confirm-banner"></div>
+
+    <!-- Food form -->
+    <div class="quick-form-wrap" id="form-food">
+        <div class="quick-form">
+            <form id="food-form">
+                <div class="field">
+                    <label class="field-label" for="food-name">Name (optional)</label>
+                    <input type="text" id="food-name" name="name" placeholder="e.g. pasta, sandwich">
+                </div>
+                <div class="field">
+                    <label class="field-label">Dairy?</label>
+                    <div class="toggle-group">
+                        <label><input type="radio" name="is_dairy" value="0" checked><span>No</span></label>
+                        <label><input type="radio" name="is_dairy" value="1"><span>Yes</span></label>
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="field-label">Meal type</label>
+                    <div class="toggle-group">
+                        <label><input type="radio" name="is_full_meal" value="1" checked><span>Full meal</span></label>
+                        <label><input type="radio" name="is_full_meal" value="0"><span>Snack</span></label>
+                    </div>
+                </div>
+                <button type="submit" class="btn-log">Log Food</button>
+            </form>
         </div>
     </div>
+
+    <!-- Headache form -->
+    <div class="quick-form-wrap" id="form-headache">
+        <div class="quick-form">
+            <form id="headache-form">
+                <div class="field">
+                    <label class="field-label" for="headache-severity">Severity (1–10)</label>
+                    <input type="number" id="headache-severity" name="severity" min="1" max="10" required placeholder="1–10">
+                </div>
+                <div class="field">
+                    <label class="field-label" for="headache-start">Started at (optional)</label>
+                    <input type="time" id="headache-start" name="started_at">
+                </div>
+                <div class="field">
+                    <label class="field-label">Medicine taken?</label>
+                    <div class="toggle-group">
+                        <label><input type="radio" name="medicine_taken" value="0" checked onchange="toggleMedicine(this)"><span>No</span></label>
+                        <label><input type="radio" name="medicine_taken" value="1" onchange="toggleMedicine(this)"><span>Yes</span></label>
+                    </div>
+                </div>
+                <div class="medicine-fields" id="medicine-fields">
+                    <div class="field">
+                        <label class="field-label" for="med-name">Medicine name</label>
+                        <input type="text" id="med-name" name="medicine_name" placeholder="e.g. ibuprofen">
+                    </div>
+                    <div class="field">
+                        <label class="field-label" for="med-time">Medicine time (optional)</label>
+                        <input type="time" id="med-time" name="medicine_time">
+                    </div>
+                </div>
+                <button type="submit" class="btn-log">Log Headache</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Bowel form -->
+    <div class="quick-form-wrap" id="form-bowel">
+        <div class="quick-form">
+            <form id="bowel-form">
+                <div class="field">
+                    <label class="field-label">Type</label>
+                    <div class="toggle-group">
+                        <label><input type="radio" name="type" value="diarrhea" required><span>Diarrhea</span></label>
+                        <label><input type="radio" name="type" value="constipation"><span>Constipation</span></label>
+                    </div>
+                </div>
+                <button type="submit" class="btn-log">Log</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const FORM_TYPES = ['food', 'headache', 'bowel'];
+
+        function showForm(type) {
+            FORM_TYPES.forEach(t => {
+                const wrap = document.getElementById('form-' + t);
+                const btn = document.getElementById('btn-' + t);
+                if (t === type) {
+                    const open = wrap.classList.contains('visible');
+                    wrap.classList.toggle('visible', !open);
+                    btn.classList.toggle('active', !open);
+                } else {
+                    wrap.classList.remove('visible');
+                    btn.classList.remove('active');
+                }
+            });
+            hideBanner();
+        }
+
+        function showBanner(msg) {
+            const el = document.getElementById('confirm-banner');
+            el.textContent = msg;
+            el.classList.add('visible');
+            clearTimeout(el._timer);
+            el._timer = setTimeout(() => el.classList.remove('visible'), 3000);
+        }
+
+        function hideBanner() {
+            const el = document.getElementById('confirm-banner');
+            el.classList.remove('visible');
+        }
+
+        async function postEvent(formEl, endpoint) {
+            const body = formEl ? new FormData(formEl) : new FormData();
+            try {
+                const resp = await fetch(endpoint, { method: 'POST', body });
+                const data = await resp.json();
+                return data.ok === true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        async function logCoffee(btn) {
+            FORM_TYPES.forEach(t => {
+                document.getElementById('form-' + t).classList.remove('visible');
+                document.getElementById('btn-' + t).classList.remove('active');
+            });
+            const ok = await postEvent(null, '/event/coffee');
+            if (ok) showBanner('Coffee logged!');
+        }
+
+        document.getElementById('food-form').addEventListener('submit', async e => {
+            e.preventDefault();
+            const ok = await postEvent(e.target, '/event/food');
+            if (ok) {
+                e.target.reset();
+                document.getElementById('form-food').classList.remove('visible');
+                document.getElementById('btn-food').classList.remove('active');
+                showBanner('Food logged!');
+            }
+        });
+
+        document.getElementById('headache-form').addEventListener('submit', async e => {
+            e.preventDefault();
+            const ok = await postEvent(e.target, '/event/headache');
+            if (ok) {
+                e.target.reset();
+                document.getElementById('medicine-fields').classList.remove('visible');
+                document.getElementById('form-headache').classList.remove('visible');
+                document.getElementById('btn-headache').classList.remove('active');
+                showBanner('Headache logged!');
+            }
+        });
+
+        document.getElementById('bowel-form').addEventListener('submit', async e => {
+            e.preventDefault();
+            const ok = await postEvent(e.target, '/event/bowel');
+            if (ok) {
+                e.target.reset();
+                document.getElementById('form-bowel').classList.remove('visible');
+                document.getElementById('btn-bowel').classList.remove('active');
+                showBanner('Logged!');
+            }
+        });
+
+        function toggleMedicine(radio) {
+            const fields = document.getElementById('medicine-fields');
+            const nameInput = document.getElementById('med-name');
+            if (radio.value === '1' && radio.checked) {
+                fields.classList.add('visible');
+                nameInput.required = true;
+            } else {
+                fields.classList.remove('visible');
+                nameInput.required = false;
+            }
+        }
+    </script>
 </body>
 </html>

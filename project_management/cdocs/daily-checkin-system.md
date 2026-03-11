@@ -49,17 +49,9 @@ CREATE INDEX idx_events_date ON events (event_date);
 
 ### Event Types and Data Schemas
 
-| Event Type | Data Schema | Created By | Repeatable | Purpose |
-|---|---|---|---|---|
-| `sleep` | `{shower_end: HH:MM?, no_shower: bool, fell_asleep: HH:MM?, sleep_end: HH:MM?, no_sleep: bool, nightmares: bool, melatonin: bool}` | Morning gate | No (1 per event_date) | Last night's sleep and morning routine |
-| `mood` | `{value: 1-10}` | Morning gate / Update | Yes (snapshot) | Current mood level at time of submission |
-| `energy` | `{value: 1-10}` | Morning gate / Update | Yes (snapshot) | Current energy level at time of submission |
-| `anxiety` | `{value: 1-10}` | Morning gate / Update | Yes (snapshot) | Current anxiety level at time of submission |
-| `daily_summary` | `{meals: int, snacks: int, coffee: int, intrusive: int, exercise_minutes: int, sunlight_minutes: int, hours_worked: real}` | Morning gate / Update | Yes (per submission) | Reconciled daily totals; authoritative count for all counter fields |
-| `coffee` | `null` | Manual | Yes | Individual timestamped coffee event (optional timing detail) |
-| `intrusive` | `null` | Manual | Yes | Individual timestamped intrusive thought episode (optional timing detail) |
-| `exercise` | `{type?: str, duration_minutes?: int}` | Manual | Yes | Individual exercise session with optional details |
-| `food` | `{name?: str, is_dairy?: bool, is_full_meal?: bool}` | Manual | Yes | Individual meal or snack with optional details |
+See [events.md](events.md) for the full event type catalog, field schemas, and design notes.
+
+Summary of event types: `sleep`, `mood`, `energy`, `anxiety`, `daily_summary`, `coffee`, `food`, `headache`, `medicine`, `bowel`, `exercise`, `intrusive`, `sunlight`, `work`.
 
 **`sleep_hours`** is not stored — calculated at render time from `fell_asleep` and `sleep_end` (handling midnight crossover).
 
@@ -110,7 +102,9 @@ Submitted to `POST /update`, creates 2–3 events:
 ## API Endpoints
 
 ### `GET /`
-Home page landing. Returns a simple HTML page with two buttons: **Submit Checkin** (links to `/checkin`) and **View History** (links to `/history`). Dark theme matching form.html. Mobile-friendly. No database queries.
+Home page landing. Returns `static/home.html`. Dark theme, mobile-first. No database queries. Contains two sections:
+- **Checkin**: "Submit Checkin" (→ `/checkin`) and "View History" (→ `/history`) buttons.
+- **Quick Log**: 2×2 grid of compact buttons (Food, Coffee, Headache, Bowel). Tapping a button expands an inline form below the grid; Coffee submits immediately via `fetch` with no form. All forms submit via `POST /event/{type}` and return to home with a brief green "Logged!" banner that auto-fades after 3s.
 
 ### `GET /checkin`
 Checks if today (per `get_event_date()` 5am boundary) already has a `sleep` event with `source='morning_gate'`. If yes, redirects to `GET /update` (status 303). Otherwise, serves `static/form.html`, queries yesterday's latest `daily_summary` event, and injects `value` attributes into the `yesterday_*` counter fields for autofill. All counter fields default to blank if no previous summary exists. No authentication.
@@ -158,6 +152,18 @@ Details formatting per event type:
 - `food`: "{name} · meal/snack · dairy?"
 
 Dark theme with subtle row tinting (sleep rows slightly blue, daily_summary rows slightly green).
+
+### `POST /event/food`
+Logs a single food event. Fields: `name` (text, optional), `is_dairy` (0/1, optional), `is_full_meal` (0/1, optional, default 1). Creates a `food` event with `source='manual'`. Returns `{"ok": true}`.
+
+### `POST /event/coffee`
+Logs a single coffee event with no data fields. Creates a `coffee` event with `source='manual'`. Returns `{"ok": true}`.
+
+### `POST /event/headache`
+Logs a headache event and optionally a medicine event in a single transaction. Fields: `severity` (1–10, required), `started_at` (HH:MM time, optional — used as `occurred_at`), `medicine_taken` (0/1, optional), `medicine_name` (text), `medicine_time` (HH:MM time, optional — used as `occurred_at` for medicine). If `medicine_taken=1`, inserts a `medicine` event with `{name, reason: "headache"}` alongside the headache event. Both use `source='manual'`. Returns `{"ok": true}`.
+
+### `POST /event/bowel`
+Logs a bowel event. Field: `type` (required, `"diarrhea"` or `"constipation"`). Creates a `bowel` event with `source='manual'`. Returns `{"ok": true}` or 400 if type is invalid.
 
 ### `GET /status`
 Returns JSON `{"blocked": true/false, "today_submitted": true/false}`. Checks `allowed_internet` ipset membership. `today_submitted` is true if a `sleep` event with `source='morning_gate'` exists for today's `event_date`.
