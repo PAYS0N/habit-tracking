@@ -80,6 +80,9 @@ Counter fields on the morning form appear in two sections:
 ## API Endpoints
 
 ### `GET /`
+Home page landing. Returns a simple HTML page with two buttons: **Submit Checkin** (links to `/checkin`) and **View History** (links to `/history`). Dark theme matching form.html. Mobile-friendly. No database queries.
+
+### `GET /checkin`
 Checks if today already has a `submission_number=1` row with `submitted_at IS NOT NULL`. If it does, redirects to `GET /update` (status 303). Otherwise, serves `static/form.html`, queries yesterday's last submission, and injects `value` attributes into the `yesterday_*` counter fields for autofill. No authentication.
 
 ### `POST /submit`
