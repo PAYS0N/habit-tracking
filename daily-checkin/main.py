@@ -1,3 +1,4 @@
+import json
 import logging
 import subprocess
 from datetime import date, datetime, timedelta
@@ -25,14 +26,8 @@ logging.basicConfig(level=logging.INFO)
 app = FastAPI()
 db: aiosqlite.Connection | None = None
 
-COUNTER_FIELDS = [
+SUMMARY_COUNTER_FIELDS = [
     "coffee", "intrusive", "meals", "snacks",
-    "exercise_minutes", "sunlight_minutes", "hours_worked",
-]
-
-# Counter fields that appear on the "Confirm Yesterday" section of the morning form
-YESTERDAY_COUNTER_FIELDS = [
-    "intrusive", "meals", "snacks",
     "exercise_minutes", "sunlight_minutes", "hours_worked",
 ]
 
@@ -67,9 +62,218 @@ def calc_sleep_hours(fell_asleep: str | None, sleep_end: str | None) -> str:
         return "—"
 
 
+def get_event_date() -> str:
+    """Get event_date with 5am boundary. Returns yesterday's date if hour < 5."""
+    now = datetime.now()
+    if now.hour < 5:
+        return (date.today() - timedelta(days=1)).isoformat()
+    return date.today().isoformat()
+
+
+async def insert_event(
+    conn: aiosqlite.Connection,
+    event_type: str,
+    event_date: str,
+    logged_at: str,
+    data: Optional[dict],
+    source: str,
+    occurred_at: Optional[str] = None,
+) -> None:
+    """Insert an event row. Centralizes JSON serialization."""
+    await conn.execute(
+        "INSERT INTO events (event_type, event_date, logged_at, occurred_at, data, source) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (
+            event_type,
+            event_date,
+            logged_at,
+            occurred_at,
+            json.dumps(data) if data is not None else None,
+            source,
+        ),
+    )
+
+
+async def get_latest_summary(conn: aiosqlite.Connection, event_date: str) -> dict | None:
+    """Fetch latest daily_summary for a date, returns parsed dict or None."""
+    rows = await conn.execute_fetchall(
+        "SELECT data FROM events WHERE event_type = 'daily_summary' AND event_date = ? "
+        "ORDER BY logged_at DESC LIMIT 1",
+        (event_date,),
+    )
+    if rows and rows[0]["data"]:
+        return json.loads(rows[0]["data"])
+    return None
+
+
+async def has_morning_gate(conn: aiosqlite.Connection, event_date: str) -> bool:
+    """Check if sleep event with source='morning_gate' exists for date."""
+    rows = await conn.execute_fetchall(
+        "SELECT 1 FROM events WHERE event_type = 'sleep' AND event_date = ? "
+        "AND source = 'morning_gate' LIMIT 1",
+        (event_date,),
+    )
+    return bool(rows)
+
+
+def format_event_details(event_type: str, data_str: str | None) -> str:
+    """Format event data for history display."""
+    if not data_str:
+        return "—"
+    try:
+        d = json.loads(data_str)
+    except (json.JSONDecodeError, TypeError):
+        return data_str or "—"
+
+    if event_type == "sleep":
+        sleep_h = calc_sleep_hours(d.get("fell_asleep"), d.get("sleep_end"))
+        parts = []
+        if d.get("no_sleep"):
+            parts.append("No sleep")
+        else:
+            if d.get("sleep_end"):
+                parts.append(f"Wake {d['sleep_end']}")
+            if sleep_h != "—":
+                parts.append(f"{sleep_h}h")
+        if d.get("nightmares"):
+            parts.append("Nightmares")
+        if d.get("melatonin"):
+            parts.append("Melatonin")
+        if not d.get("no_shower") and d.get("shower_end"):
+            parts.append(f"Shower {d['shower_end']}")
+        elif d.get("no_shower"):
+            parts.append("No shower")
+        return " · ".join(parts) if parts else "—"
+
+    elif event_type in ("mood", "energy", "anxiety"):
+        return str(d.get("value", "—"))
+
+    elif event_type == "daily_summary":
+        parts = []
+        mapping = [
+            ("meals", "Meals"),
+            ("snacks", "Snacks"),
+            ("coffee", "Coffee"),
+            ("exercise_minutes", "Ex"),
+            ("sunlight_minutes", "Sun"),
+            ("hours_worked", "Work"),
+            ("intrusive", "Int"),
+        ]
+        for key, label in mapping:
+            val = d.get(key)
+            if val is not None:
+                suffix = "m" if "minutes" in key else ("h" if key == "hours_worked" else "")
+                parts.append(f"{label}:{val}{suffix}")
+        return " ".join(parts) if parts else "—"
+
+    elif event_type == "exercise":
+        parts = []
+        if d.get("type"):
+            parts.append(d["type"])
+        if d.get("duration_minutes"):
+            parts.append(f"{d['duration_minutes']}m")
+        return " ".join(parts) if parts else "—"
+
+    elif event_type == "food":
+        parts = [d.get("name", "(unnamed)")]
+        if d.get("is_full_meal"):
+            parts.append("meal")
+        else:
+            parts.append("snack")
+        if d.get("is_dairy"):
+            parts.append("dairy")
+        return " · ".join(parts)
+
+    else:
+        return data_str
+
+
+async def migrate_if_needed(conn: aiosqlite.Connection) -> None:
+    """Auto-migrate from checkins table to events table if needed."""
+    checkins_exists = bool(
+        await conn.execute_fetchall(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='checkins'"
+        )
+    )
+    if not checkins_exists:
+        return  # nothing to migrate
+
+    events_exists = bool(
+        await conn.execute_fetchall(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='events'"
+        )
+    )
+
+    if events_exists:
+        # Check if events is empty (just created by get_db()) or populated (prior run)
+        event_count_row = await conn.execute_fetchall("SELECT COUNT(*) as c FROM events")
+        event_count = event_count_row[0]["c"] if event_count_row else 0
+        if event_count > 0:
+            # Migration was done but DROP failed, or schema was pre-created
+            log.warning(
+                "checkins exists alongside populated events table — dropping checkins"
+            )
+            await conn.execute("DROP TABLE checkins")
+            await conn.commit()
+            return
+        # events is empty — fall through to run migration
+
+    log.info("Starting migration from checkins to events table")
+
+    rows = await conn.execute_fetchall(
+        "SELECT * FROM checkins WHERE submitted_at IS NOT NULL "
+        "ORDER BY date ASC, submission_number ASC"
+    )
+
+    for row in rows:
+        event_date = row["date"]
+        logged_at = row["submitted_at"]
+        source = "morning_gate" if row["submission_number"] == 1 else "update"
+
+        # sleep event (morning gate only)
+        if row["submission_number"] == 1:
+            sleep_data = {
+                "shower_end": row["shower_end"],
+                "no_shower": bool(row["no_shower"]),
+                "fell_asleep": row["fell_asleep"],
+                "sleep_end": row["sleep_end"],
+                "no_sleep": bool(row["no_sleep"]),
+                "nightmares": bool(row["nightmares"]),
+                "melatonin": bool(row["melatonin"]),
+            }
+            await insert_event(conn, "sleep", event_date, logged_at, sleep_data, source)
+
+        # mood / energy / anxiety
+        for field in ("mood", "energy", "anxiety"):
+            if row[field] is not None:
+                await insert_event(conn, field, event_date, logged_at, {"value": row[field]}, source)
+
+        # daily_summary
+        counter_fields = [
+            "coffee",
+            "intrusive",
+            "meals",
+            "snacks",
+            "exercise_minutes",
+            "sunlight_minutes",
+            "hours_worked",
+        ]
+        if any(row[f] is not None for f in counter_fields):
+            summary_data = {f: (row[f] if row[f] is not None else 0) for f in counter_fields}
+            await insert_event(conn, "daily_summary", event_date, logged_at, summary_data, source)
+
+    await conn.commit()
+    log.info("Migration complete: %d checkins rows converted", len(rows))
+
+    await conn.execute("DROP TABLE checkins")
+    await conn.commit()
+    log.info("checkins table dropped")
+
+
 @app.on_event("startup")
 async def startup():
-    await get_db()
+    conn = await get_db()
+    await migrate_if_needed(conn)
     log.info("Daily checkin service started on port %d", PORT)
 
 
@@ -89,32 +293,27 @@ async def home():
 @app.get("/checkin", response_class=HTMLResponse)
 async def checkin():
     conn = await get_db()
-    today = date.today().isoformat()
+    today_date = get_event_date()
+    yesterday_date = (date.fromisoformat(today_date) - timedelta(days=1)).isoformat()
 
-    # Check if today already has submission_number=1 with submitted_at IS NOT NULL
-    today_submitted = await conn.execute_fetchall(
-        "SELECT id FROM checkins WHERE date = ? AND submission_number = 1 AND submitted_at IS NOT NULL",
-        (today,),
-    )
-    if today_submitted:
+    # Check if today's morning gate already completed
+    if await has_morning_gate(conn, today_date):
         return RedirectResponse(url="/update", status_code=303)
 
     form_html = (STATIC_DIR / "form.html").read_text()
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
-    rows = await conn.execute_fetchall(
-        "SELECT * FROM checkins WHERE date = ? ORDER BY submission_number DESC LIMIT 1",
-        (yesterday,),
-    )
-    if rows:
-        row = rows[0]
-        # Autofill only the "Confirm Yesterday" fields (yesterday_ prefixed ids)
-        for field in YESTERDAY_COUNTER_FIELDS:
-            val = row[field]
+
+    # Autofill yesterday's counters from latest daily_summary
+    summary = await get_latest_summary(conn, yesterday_date)
+    if summary:
+        # Autofill SUMMARY_COUNTER_FIELDS except coffee (not on form's yesterday section)
+        yesterday_fields = [f for f in SUMMARY_COUNTER_FIELDS if f != "coffee"]
+        for field in yesterday_fields:
+            val = summary.get(field)
             if val is not None:
                 form_html = form_html.replace(
-                    f'id="yesterday_{field}"',
-                    f'id="yesterday_{field}" value="{val}"',
+                    f'id="yesterday_{field}"', f'id="yesterday_{field}" value="{val}"'
                 )
+
     return HTMLResponse(content=form_html)
 
 
@@ -162,92 +361,86 @@ async def submit(
         )
 
     conn = await get_db()
-    today = date.today().isoformat()
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    today_date = get_event_date()
+    yesterday_date = (date.fromisoformat(today_date) - timedelta(days=1)).isoformat()
     now = datetime.now().isoformat()
     device_ip = request.client.host if request.client else None
 
-    # Backfill gaps
-    row = await conn.execute_fetchall(
-        "SELECT date FROM checkins ORDER BY date DESC LIMIT 1"
-    )
-    if row:
-        last_date = date.fromisoformat(row[0]["date"])
-        gap_start = last_date + timedelta(days=1)
-        gap_end = date.today() - timedelta(days=1)
-        d = gap_start
-        while d <= gap_end:
-            await conn.execute(
-                "INSERT INTO checkins (date, submission_number) VALUES (?, 1)",
-                (d.isoformat(),),
-            )
-            d += timedelta(days=1)
-
     # Counter validation for yesterday's confirmed values
+    prev_yesterday_summary = await get_latest_summary(conn, yesterday_date)
     yesterday_confirmed = {
-        "intrusive": yesterday_intrusive, "meals": yesterday_meals,
-        "snacks": yesterday_snacks, "exercise_minutes": yesterday_exercise_minutes,
-        "sunlight_minutes": yesterday_sunlight_minutes, "hours_worked": yesterday_hours_worked,
+        "intrusive": yesterday_intrusive,
+        "meals": yesterday_meals,
+        "snacks": yesterday_snacks,
+        "exercise_minutes": yesterday_exercise_minutes,
+        "sunlight_minutes": yesterday_sunlight_minutes,
+        "hours_worked": yesterday_hours_worked,
     }
-    yesterday_rows = await conn.execute_fetchall(
-        "SELECT * FROM checkins WHERE date = ? ORDER BY submission_number DESC",
-        (yesterday,),
-    )
-    if yesterday_rows:
+    if prev_yesterday_summary:
         for field, new_val in yesterday_confirmed.items():
-            max_val = max(
-                (r[field] for r in yesterday_rows if r[field] is not None),
-                default=None,
-            )
-            if max_val is not None and new_val < max_val:
+            existing = prev_yesterday_summary.get(field, 0)
+            if existing is not None and new_val < existing:
                 return HTMLResponse(
-                    content=f"<p style='color:red'>Yesterday's {field} cannot decrease (current: {max_val}, submitted: {new_val}).</p>",
+                    content=f"<p style='color:red'>Yesterday's {field} cannot decrease (current: {existing}, submitted: {new_val}).</p>",
                     status_code=400,
                 )
 
-    # Insert yesterday's retroactive row (sub#N+1)
-    yesterday_max_sub = await conn.execute_fetchall(
-        "SELECT MAX(submission_number) as max_sub FROM checkins WHERE date = ?",
-        (yesterday,),
-    )
-    yesterday_next_sub = (yesterday_max_sub[0]["max_sub"] or 0) + 1
+    # Batch insert events
+    # 1. sleep event for today
+    sleep_data = {
+        "shower_end": shower_end,
+        "no_shower": bool(no_shower),
+        "fell_asleep": fell_asleep,
+        "sleep_end": sleep_end,
+        "no_sleep": bool(no_sleep),
+        "nightmares": bool(nightmares),
+        "melatonin": bool(melatonin),
+    }
+    await insert_event(conn, "sleep", today_date, now, sleep_data, "morning_gate")
 
-    await conn.execute(
-        """INSERT INTO checkins
-        (date, submission_number, submitted_at, device_ip,
-         intrusive, meals, snacks, exercise_minutes, sunlight_minutes, hours_worked)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            yesterday, yesterday_next_sub, now, device_ip,
-            yesterday_intrusive, yesterday_meals, yesterday_snacks,
-            yesterday_exercise_minutes, yesterday_sunlight_minutes, yesterday_hours_worked,
-        ),
-    )
+    # 2. mood, energy, anxiety events for today
+    await insert_event(conn, "mood", today_date, now, {"value": mood}, "morning_gate")
+    await insert_event(conn, "energy", today_date, now, {"value": energy}, "morning_gate")
+    await insert_event(conn, "anxiety", today_date, now, {"value": anxiety}, "morning_gate")
 
-    # Insert today's submission_number=1 row
-    await conn.execute(
-        """INSERT INTO checkins
-        (date, submission_number, submitted_at, device_ip,
-         shower_end, no_shower, fell_asleep, sleep_end, no_sleep, nightmares, melatonin,
-         mood, energy, anxiety,
-         coffee, intrusive, meals, snacks, exercise_minutes, sunlight_minutes, hours_worked)
-        VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            today, now, device_ip,
-            shower_end or None, 1 if no_shower else 0,
-            fell_asleep or None, sleep_end or None, 1 if no_sleep else 0,
-            nightmares, melatonin,
-            mood, energy, anxiety,
-            coffee, intrusive, meals, snacks, exercise_minutes, sunlight_minutes, hours_worked,
-        ),
-    )
+    # 3. daily_summary for yesterday (required)
+    # Carry forward coffee from previous summary (default 0)
+    yesterday_coffee = (prev_yesterday_summary or {}).get("coffee", 0)
+    yesterday_summary_data = {
+        "meals": yesterday_meals,
+        "snacks": yesterday_snacks,
+        "coffee": yesterday_coffee,
+        "intrusive": yesterday_intrusive,
+        "exercise_minutes": yesterday_exercise_minutes,
+        "sunlight_minutes": yesterday_sunlight_minutes,
+        "hours_worked": yesterday_hours_worked,
+    }
+    await insert_event(conn, "daily_summary", yesterday_date, now, yesterday_summary_data, "morning_gate")
+
+    # 4. daily_summary for today (optional, only if any counter is non-zero)
+    today_counters = {
+        "coffee": coffee,
+        "intrusive": intrusive,
+        "meals": meals,
+        "snacks": snacks,
+        "exercise_minutes": exercise_minutes,
+        "sunlight_minutes": sunlight_minutes,
+        "hours_worked": hours_worked,
+    }
+    if any(v is not None and v != 0 for v in today_counters.values()):
+        today_summary_data = {
+            k: (v if v is not None else 0) for k, v in today_counters.items()
+        }
+        await insert_event(conn, "daily_summary", today_date, now, today_summary_data, "morning_gate")
+
     await conn.commit()
 
     # Unblock all devices
     for ip in DEVICES:
         result = subprocess.run(
             ["sudo", IPSET_BIN, "add", "allowed_internet", ip, "-exist"],
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
         )
         if result.returncode != 0:
             log.error("ipset add %s failed: %s", ip, result.stderr.decode())
@@ -255,7 +448,8 @@ async def submit(
     # Flush must_checkin ipset
     result = subprocess.run(
         ["sudo", IPSET_BIN, "flush", "must_checkin"],
-        check=False, capture_output=True,
+        check=False,
+        capture_output=True,
     )
     if result.returncode != 0:
         log.error("ipset flush must_checkin failed: %s", result.stderr.decode())
@@ -263,17 +457,36 @@ async def submit(
     # Remove captive portal DNAT rule
     result = subprocess.run(
         [
-            "sudo", IPTABLES_BIN, "-t", "nat", "-D", "PREROUTING",
-            "-i", "wlan0", "-m", "set", "--match-set", "must_checkin", "src",
-            "-p", "tcp", "--dport", "80",
-            "-j", "DNAT", "--to-destination", f"192.168.22.1:{PORT}",
+            "sudo",
+            IPTABLES_BIN,
+            "-t",
+            "nat",
+            "-D",
+            "PREROUTING",
+            "-i",
+            "wlan0",
+            "-m",
+            "set",
+            "--match-set",
+            "must_checkin",
+            "src",
+            "-p",
+            "tcp",
+            "--dport",
+            "80",
+            "-j",
+            "DNAT",
+            "--to-destination",
+            f"192.168.22.1:{PORT}",
         ],
-        check=False, capture_output=True,
+        check=False,
+        capture_output=True,
     )
     if result.returncode != 0:
         log.warning("iptables DNAT removal: %s", result.stderr.decode())
 
-    return HTMLResponse(content=f"""<!DOCTYPE html>
+    return HTMLResponse(
+        content=f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -294,32 +507,30 @@ async def submit(
 <body>
     <div class="success">
         <h1>Checkin Complete</h1>
-        <p>Submitted for <strong>{today}</strong>.</p>
+        <p>Submitted for <strong>{today_date}</strong>.</p>
         <p>All devices are unblocked. Internet restored.</p>
         <a href="/update" class="update-link">Submit another update later today →</a>
     </div>
 </body>
-</html>""")
+</html>"""
+    )
 
 
 @app.get("/update", response_class=HTMLResponse)
 async def update_form():
     form_html = (STATIC_DIR / "update.html").read_text()
     conn = await get_db()
-    today = date.today().isoformat()
-    rows = await conn.execute_fetchall(
-        "SELECT * FROM checkins WHERE date = ? ORDER BY submission_number DESC LIMIT 1",
-        (today,),
-    )
-    if rows:
-        row = rows[0]
-        for field in COUNTER_FIELDS:
-            val = row[field]
+    today_date = get_event_date()
+
+    summary = await get_latest_summary(conn, today_date)
+    if summary:
+        for field in SUMMARY_COUNTER_FIELDS:
+            val = summary.get(field)
             if val is not None:
                 form_html = form_html.replace(
-                    f'id="{field}"',
-                    f'id="{field}" value="{val}"',
+                    f'id="{field}"', f'id="{field}" value="{val}"'
                 )
+
     return HTMLResponse(content=form_html)
 
 
@@ -338,69 +549,95 @@ async def update_submit(
     hours_worked: Optional[float] = Form(None),
 ):
     conn = await get_db()
-    today = date.today().isoformat()
-    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    today_date = get_event_date()
+    tomorrow_date = (date.fromisoformat(today_date) + timedelta(days=1)).isoformat()
     now = datetime.now().isoformat()
-    device_ip = request.client.host if request.client else None
 
-    # Lock check: reject if tomorrow has a submission_number=1 row
-    lock_row = await conn.execute_fetchall(
-        "SELECT id FROM checkins WHERE date = ? AND submission_number = 1 AND submitted_at IS NOT NULL",
-        (tomorrow,),
-    )
-    if lock_row:
+    # Lock check: reject if tomorrow has morning gate
+    if await has_morning_gate(conn, tomorrow_date):
         return HTMLResponse(
             content="<p style='color:red'>Today's checkin is finalized. No further updates allowed.</p>",
             status_code=400,
         )
 
-    # Counter validation: each submitted counter must be >= current day's max
-    today_rows = await conn.execute_fetchall(
-        "SELECT * FROM checkins WHERE date = ? ORDER BY submission_number DESC",
-        (today,),
-    )
+    # Counter validation
+    current_summary = await get_latest_summary(conn, today_date)
+    current = current_summary or {}
     submitted_counters = {
-        "coffee": coffee, "intrusive": intrusive, "meals": meals,
-        "snacks": snacks, "exercise_minutes": exercise_minutes,
-        "sunlight_minutes": sunlight_minutes, "hours_worked": hours_worked,
+        "coffee": coffee,
+        "intrusive": intrusive,
+        "meals": meals,
+        "snacks": snacks,
+        "exercise_minutes": exercise_minutes,
+        "sunlight_minutes": sunlight_minutes,
+        "hours_worked": hours_worked,
     }
-    if today_rows:
-        for field in COUNTER_FIELDS:
-            new_val = submitted_counters[field]
-            if new_val is None:
-                continue
-            max_val = max(
-                (r[field] for r in today_rows if r[field] is not None),
-                default=None,
+
+    # Layer 1: validate against latest daily_summary
+    for field in SUMMARY_COUNTER_FIELDS:
+        new_val = submitted_counters[field]
+        if new_val is None:
+            continue
+        existing = current.get(field, 0)
+        if new_val < existing:
+            return HTMLResponse(
+                content=f"<p style='color:red'>{field} cannot decrease (current: {existing}, submitted: {new_val}).</p>",
+                status_code=400,
             )
-            if max_val is not None and new_val < max_val:
-                return HTMLResponse(
-                    content=f"<p style='color:red'>{field} cannot decrease (current: {max_val}, submitted: {new_val}).</p>",
-                    status_code=400,
-                )
 
-    # Determine next submission number
-    max_sub_row = await conn.execute_fetchall(
-        "SELECT MAX(submission_number) as max_sub FROM checkins WHERE date = ?",
-        (today,),
+    # Layer 2: validate against individual events (coffee and intrusive only)
+    coffee_event_count_row = await conn.execute_fetchall(
+        "SELECT COUNT(*) as c FROM events WHERE event_type = 'coffee' AND event_date = ?",
+        (today_date,),
     )
-    next_sub = (max_sub_row[0]["max_sub"] or 0) + 1
+    coffee_event_count = coffee_event_count_row[0]["c"] if coffee_event_count_row else 0
+    if coffee is not None and coffee < coffee_event_count:
+        return HTMLResponse(
+            content=f"<p style='color:red'>Coffee count cannot be less than {coffee_event_count} individual logged events.</p>",
+            status_code=400,
+        )
 
-    await conn.execute(
-        """INSERT INTO checkins
-        (date, submission_number, submitted_at, device_ip,
-         mood, energy, anxiety,
-         coffee, intrusive, meals, snacks, exercise_minutes, sunlight_minutes, hours_worked)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            today, next_sub, now, device_ip,
-            mood, energy, anxiety,
-            coffee, intrusive, meals, snacks, exercise_minutes, sunlight_minutes, hours_worked,
-        ),
+    intrusive_event_count_row = await conn.execute_fetchall(
+        "SELECT COUNT(*) as c FROM events WHERE event_type = 'intrusive' AND event_date = ?",
+        (today_date,),
     )
+    intrusive_event_count = (
+        intrusive_event_count_row[0]["c"] if intrusive_event_count_row else 0
+    )
+    if intrusive is not None and intrusive < intrusive_event_count:
+        return HTMLResponse(
+            content=f"<p style='color:red'>Intrusive count cannot be less than {intrusive_event_count} individual logged events.</p>",
+            status_code=400,
+        )
+
+    # Insert snapshot events (if provided)
+    if mood is not None:
+        await insert_event(conn, "mood", today_date, now, {"value": mood}, "update")
+    if energy is not None:
+        await insert_event(conn, "energy", today_date, now, {"value": energy}, "update")
+    if anxiety is not None:
+        await insert_event(conn, "anxiety", today_date, now, {"value": anxiety}, "update")
+
+    # Insert daily_summary only if any counter changed
+    any_changed = False
+    new_summary_data = {}
+    for field in SUMMARY_COUNTER_FIELDS:
+        submitted = submitted_counters[field]
+        current_val = current.get(field, 0)
+        if submitted is not None:
+            if submitted != current_val:
+                any_changed = True
+            new_summary_data[field] = submitted
+        else:
+            new_summary_data[field] = current_val
+
+    if any_changed:
+        await insert_event(conn, "daily_summary", today_date, now, new_summary_data, "update")
+
     await conn.commit()
 
-    return HTMLResponse(content=f"""<!DOCTYPE html>
+    return HTMLResponse(
+        content=f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -420,61 +657,55 @@ async def update_submit(
 <body>
     <div class="success">
         <h1>Update Saved</h1>
-        <p>Submission #{next_sub} for <strong>{today}</strong>.</p>
+        <p>Submitted for <strong>{today_date}</strong>.</p>
         <a href="/update">Submit another update</a> · <a href="/history">View history</a>
     </div>
 </body>
-</html>""")
+</html>"""
+    )
 
 
 @app.get("/history", response_class=HTMLResponse)
 async def history():
     conn = await get_db()
     rows = await conn.execute_fetchall(
-        "SELECT * FROM checkins ORDER BY date DESC, submission_number DESC"
+        "SELECT id, event_type, event_date, logged_at, occurred_at, data, source "
+        "FROM events ORDER BY event_date DESC, logged_at DESC"
     )
 
-    def fmt(val):
-        return "—" if val is None else str(val)
+    def fmt_time(logged_at: str) -> str:
+        """Extract HH:MM from ISO 8601 timestamp."""
+        if logged_at and len(logged_at) > 10:
+            return logged_at[11:16]
+        return logged_at or "—"
 
-    def fmt_bool(val):
-        if val is None:
-            return "—"
-        return "Yes" if val == 1 else "No"
-
-    def fmt_submitted(val):
-        if val is None:
-            return "—"
-        return val[11:16] if len(val) > 10 else val
+    def fmt_source(source: str) -> str:
+        """Format source as short badge."""
+        if source == "morning_gate":
+            return "gate"
+        elif source == "update":
+            return "upd"
+        elif source == "manual":
+            return "man"
+        return source or "—"
 
     table_rows = ""
     for row in rows:
-        backfilled = row["submitted_at"] is None
-        row_class = ' class="backfilled"' if backfilled else ""
-        sleep_h = calc_sleep_hours(row["fell_asleep"], row["sleep_end"])
+        time_str = fmt_time(row["logged_at"])
+        source_str = fmt_source(row["source"])
+        details = format_event_details(row["event_type"], row["data"])
         table_rows += (
-            f'<tr{row_class}>'
-            f'<td>{row["date"]}</td>'
-            f'<td>{row["submission_number"]}</td>'
-            f'<td>{fmt_submitted(row["submitted_at"])}</td>'
-            f'<td>{fmt(row["mood"])}</td>'
-            f'<td>{fmt(row["energy"])}</td>'
-            f'<td>{fmt(row["anxiety"])}</td>'
-            f'<td>{sleep_h}</td>'
-            f'<td>{fmt(row["sleep_end"])}</td>'
-            f'<td>{fmt_bool(row["nightmares"])}</td>'
-            f'<td>{fmt(row["coffee"])}</td>'
-            f'<td>{fmt_bool(row["melatonin"])}</td>'
-            f'<td>{fmt(row["intrusive"])}</td>'
-            f'<td>{fmt(row["exercise_minutes"])}</td>'
-            f'<td>{fmt(row["sunlight_minutes"])}</td>'
-            f'<td>{fmt(row["hours_worked"])}</td>'
-            f'<td>{fmt(row["meals"])}</td>'
-            f'<td>{fmt(row["snacks"])}</td>'
-            f'</tr>\n'
+            f"<tr>"
+            f'<td>{row["event_date"]}</td>'
+            f'<td>{time_str}</td>'
+            f"<td>{source_str}</td>"
+            f'<td>{row["event_type"]}</td>'
+            f"<td>{details}</td>"
+            f"</tr>\n"
         )
 
-    return HTMLResponse(content=f"""<!DOCTYPE html>
+    return HTMLResponse(
+        content=f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -492,17 +723,18 @@ async def history():
                       text-decoration: none; font-size: 0.95rem; }}
         .back-link:hover {{ text-decoration: underline; }}
         .table-wrap {{ overflow-x: auto; border-radius: 8px; border: 1px solid #21262d; }}
-        table {{ border-collapse: collapse; width: 100%; min-width: 950px; font-size: 0.85rem; }}
+        table {{ border-collapse: collapse; width: 100%; min-width: 600px; font-size: 0.85rem; }}
         thead tr {{ background: #161b22; }}
         th {{
             padding: 10px 12px; text-align: left; color: #8b949e;
             font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;
             border-bottom: 1px solid #30363d; white-space: nowrap;
         }}
-        td {{ padding: 9px 12px; border-bottom: 1px solid #21262d; white-space: nowrap; }}
+        td {{ padding: 9px 12px; border-bottom: 1px solid #21262d; }}
         tbody tr:last-child td {{ border-bottom: none; }}
         tbody tr:hover td {{ background: #161b22; }}
-        tr.backfilled td {{ color: #484f58; }}
+        tr.event-sleep td {{ background: #0d1d2d; }}
+        tr.event-daily_summary td {{ background: #0d2d1d; }}
         .count {{ color: #8b949e; font-size: 0.85rem; text-align: center; margin-top: 12px; }}
     </style>
 </head>
@@ -514,47 +746,33 @@ async def history():
             <thead>
                 <tr>
                     <th>Date</th>
-                    <th>Sub#</th>
                     <th>Time</th>
-                    <th>Mood</th>
-                    <th>Energy</th>
-                    <th>Anxiety</th>
-                    <th>Sleep h</th>
-                    <th>Wake</th>
-                    <th>Nightmares</th>
-                    <th>Coffee</th>
-                    <th>Melatonin</th>
-                    <th>Intrusive</th>
-                    <th>Exercise min</th>
-                    <th>Sunlight min</th>
-                    <th>Hrs worked</th>
-                    <th>Meals</th>
-                    <th>Snacks</th>
+                    <th>Source</th>
+                    <th>Type</th>
+                    <th>Details</th>
                 </tr>
             </thead>
             <tbody>
 {table_rows}            </tbody>
         </table>
     </div>
-    <p class="count">{len(rows)} record{"s" if len(rows) != 1 else ""} total &mdash; dimmed rows are backfilled (no submission)</p>
+    <p class="count">{len(rows)} event{"s" if len(rows) != 1 else ""} total</p>
 </body>
-</html>""")
+</html>"""
+    )
 
 
 @app.get("/status", response_class=JSONResponse)
 async def status():
     conn = await get_db()
-    today = date.today().isoformat()
-    row = await conn.execute_fetchall(
-        "SELECT submitted_at FROM checkins WHERE date = ? AND submission_number = 1",
-        (today,),
-    )
-    today_submitted = bool(row and row[0]["submitted_at"] is not None)
+    today_date = get_event_date()
+    today_submitted = await has_morning_gate(conn, today_date)
     blocked = False
     for ip in DEVICES:
         result = subprocess.run(
             ["sudo", IPSET_BIN, "test", "allowed_internet", ip],
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
         )
         if result.returncode != 0:
             blocked = True
