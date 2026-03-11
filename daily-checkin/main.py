@@ -83,49 +83,7 @@ async def shutdown():
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
-    return HTMLResponse(content="""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daily Checkin</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            max-width: 480px; margin: 0 auto; padding: 16px;
-            background: #0d1117; color: #c9d1d9;
-            display: flex; align-items: center; justify-content: center; min-height: 100vh;
-        }
-        .container {
-            width: 100%; text-align: center;
-        }
-        h1 { color: #58a6ff; margin-bottom: 40px; font-size: 1.8rem; }
-        .button-group { display: flex; flex-direction: column; gap: 16px; }
-        a {
-            display: block; padding: 18px; border-radius: 8px; text-decoration: none;
-            font-size: 1.1rem; font-weight: 600; transition: background 0.2s;
-        }
-        .btn-primary {
-            background: #238636; color: #fff;
-        }
-        .btn-primary:hover { background: #2ea043; }
-        .btn-secondary {
-            background: #1f6feb; color: #fff;
-        }
-        .btn-secondary:hover { background: #388bfd; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Daily Checkin</h1>
-        <div class="button-group">
-            <a href="/checkin" class="btn-primary">Submit Checkin</a>
-            <a href="/history" class="btn-secondary">View History</a>
-        </div>
-    </div>
-</body>
-</html>""")
+    return HTMLResponse((STATIC_DIR / "home.html").read_text())
 
 
 @app.get("/checkin", response_class=HTMLResponse)
@@ -550,7 +508,7 @@ async def history():
 </head>
 <body>
     <h1>Checkin History</h1>
-    <a href="/checkin" class="back-link">&larr; Back to checkin form</a>
+    <a href="/" class="back-link">&larr; Back to home</a>
     <div class="table-wrap">
         <table>
             <thead>
