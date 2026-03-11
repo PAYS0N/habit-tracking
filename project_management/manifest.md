@@ -21,6 +21,7 @@
 | [daily-checkin/schema.sql](../daily-checkin/schema.sql) | SQLite DDL for the checkins table (multi-row per date) |
 | [daily-checkin/static/form.html](../daily-checkin/static/form.html) | Morning gate form: confirm yesterday's counters, last night's sleep, mental state, today so far |
 | [daily-checkin/static/update.html](../daily-checkin/static/update.html) | Update form: optional mental state snapshots and today's counter updates |
+| [daily-checkin/static/home.html](../daily-checkin/static/home.html) | Home screen to access information input methods and history |
 | [daily-checkin/block.sh](../daily-checkin/block.sh) | Shell script to block devices and add captive portal DNAT rule |
 | [daily-checkin/checkin.service](../daily-checkin/checkin.service) | systemd unit for the FastAPI backend (port 8900) |
 | [daily-checkin/daily-checkin-block.service](../daily-checkin/daily-checkin-block.service) | systemd oneshot unit for the block script |

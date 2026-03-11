@@ -12,7 +12,5 @@
 
 ## Open Items
 
-- daily update shouldn't link to first form submission
-- day boundary should be 5am (match block timer), not midnight — updates should be submittable until then
 - iptables/ipset persistence across reboot (DNAT rule and `must_checkin` set lost on reboot; block timer recreates at next 05:00)
 - HTTPS / trusted cert for captive portal

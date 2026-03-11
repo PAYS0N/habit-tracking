@@ -2,9 +2,9 @@
 
 ## Overview
 
-A FastAPI service running on the Raspberry Pi router (kuudra) that serves a daily morning checkin form, enforces internet access blocks via ipset, and accumulates a longitudinal SQLite dataset for mood and lifestyle analysis. Supports multiple submissions per day: a morning gate form (submission_number=1) unblocks devices, and an update form allows further submissions throughout the day. A `must_checkin` ipset scopes the captive portal DNAT rule so only blocked devices are redirected; other devices on the network are unaffected.
+A FastAPI service running on the Raspberry Pi router (kuudra) that serves a daily morning checkin form, enforces internet access blocks via ipset, and accumulates a longitudinal SQLite dataset for mood and lifestyle analysis. Uses an **event log architecture**: each observable fact (sleep, mood snapshot, daily counter summary) is a separate row in a single `events` table with typed JSON data. Supports multiple submissions per day: a morning gate form unblocks devices, and an update form allows further submissions throughout the day. A `must_checkin` ipset scopes the captive portal DNAT rule so only blocked devices are redirected; other devices on the network are unaffected.
 
-**Status:** Deployed and operational on the Pi.
+**Status:** Deployed and operational on the Pi (event log architecture active).
 **Port:** 8900
 **Deployment path:** `/home/pays0n/Documents/Projects/habit-tracking/daily-checkin/`
 
@@ -12,11 +12,12 @@ A FastAPI service running on the Raspberry Pi router (kuudra) that serves a dail
 
 ```
 daily-checkin/
-├── main.py                       # FastAPI app: routes, DB init, backfill, counter validation, ipset/iptables calls
-├── schema.sql                    # SQLite DDL (applied at startup if DB absent)
+├── main.py                       # FastAPI app: routes, event inserts, migration, counter validation, ipset/iptables calls
+├── schema.sql                    # SQLite DDL for events table (applied at startup if DB absent)
 ├── static/
-│   ├── form.html                 # Morning gate form (dark theme)
-│   └── update.html               # Update form for later-in-day submissions (dark theme)
+│   ├── form.html                 # Morning gate form (dark theme; unchanged field names)
+│   ├── update.html               # Update form for later-in-day submissions (dark theme; unchanged field names)
+│   └── home.html                 # Home page
 ├── block.sh                      # Block script: removes IPs, adds DNAT rule
 ├── checkin.service               # systemd unit for FastAPI backend
 ├── daily-checkin-block.service   # systemd oneshot for block script
@@ -28,54 +29,83 @@ daily-checkin/
 
 ## Database Schema
 
-Single table `checkins`. Multiple rows per calendar date — one per submission. `submission_number` starts at 1 (morning gate) and increments. Backfilled rows for missed dates have `submission_number=1` with all metric columns NULL.
+Single table `events` with JSON `data` column. Each row represents one typed event (sleep, mood, anxiety, energy, daily_summary, coffee, intrusive, etc.). **Ground truth for daily totals is the `daily_summary` event** — the most recent per date. Individual events (coffee, intrusive) are sparse timing details that supplement the daily totals.
 
 ```sql
-CREATE TABLE IF NOT EXISTS checkins (
-    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-    date                TEXT NOT NULL,              -- YYYY-MM-DD (Pi local time)
-    submission_number   INTEGER NOT NULL DEFAULT 1, -- 1 = morning gate; 2+ = updates
-    submitted_at        TEXT,                       -- ISO 8601; NULL = backfilled
-    device_ip           TEXT,                       -- NULL = backfilled
-
-    -- Sleep (morning form only; NULL on update submissions)
-    shower_end          TEXT,                       -- HH:MM or NULL
-    no_shower           INTEGER,                    -- 0/1; fallback if shower_end NULL
-    fell_asleep         TEXT,                       -- HH:MM or NULL
-    sleep_end           TEXT,                       -- HH:MM (wake time) or NULL
-    no_sleep            INTEGER,                    -- 0/1; fallback if fell_asleep/sleep_end NULL
-    nightmares          INTEGER,                    -- 0/1; morning form only
-    melatonin           INTEGER,                    -- 0/1; morning form only
-
-    -- Snapshot fields (recorded fresh each submission; blank on next morning's form)
-    mood                INTEGER,                    -- 1–10 or NULL
-    energy              INTEGER,                    -- 1–10 or NULL
-    anxiety             INTEGER,                    -- 1–10 or NULL
-
-    -- Counter fields (can only increase within a day; autofilled from prev day on morning form)
-    coffee              INTEGER,                    -- cumulative count (0, 1, 2…)
-    intrusive           INTEGER,                    -- 0–5 cumulative
-    meals               INTEGER,
-    snacks              INTEGER,
-    exercise_minutes    INTEGER,
-    sunlight_minutes    INTEGER,
-    hours_worked        REAL
+CREATE TABLE IF NOT EXISTS events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type  TEXT NOT NULL,       -- discriminator: 'sleep', 'mood', 'energy', 'anxiety', 'daily_summary', etc.
+    event_date  TEXT NOT NULL,       -- YYYY-MM-DD (logical date; 5am boundary; see below)
+    logged_at   TEXT NOT NULL,       -- ISO 8601 timestamp of insertion
+    occurred_at TEXT,                -- ISO 8601 timestamp of when event happened (optional, for backdated events)
+    ended_at    TEXT,                -- ISO 8601 timestamp of span end (for events like headache)
+    data        TEXT,                -- JSON blob with type-specific fields; NULL if no data
+    source      TEXT NOT NULL        -- 'morning_gate', 'update', 'manual'
 );
+
+CREATE INDEX idx_events_type_date ON events (event_type, event_date);
+CREATE INDEX idx_events_date ON events (event_date);
 ```
 
-**`sleep_hours`** is not stored — calculated at query time from `fell_asleep` and `sleep_end` (handling midnight crossover).
+### Event Types and Data Schemas
 
-## Field Categories
-
-| Category | Fields | Morning Form | Update Form | Carry-forward |
+| Event Type | Data Schema | Created By | Repeatable | Purpose |
 |---|---|---|---|---|
-| Morning-only | shower_end, no_shower, fell_asleep, sleep_end, no_sleep, nightmares, melatonin | Required (with fallback) | Absent | No |
-| Snapshot | mood, energy, anxiety | Required | Optional | No |
-| Counter | coffee, intrusive, meals, snacks, exercise_minutes, sunlight_minutes, hours_worked | See below | Optional | Yes (yesterday → morning form) |
+| `sleep` | `{shower_end: HH:MM?, no_shower: bool, fell_asleep: HH:MM?, sleep_end: HH:MM?, no_sleep: bool, nightmares: bool, melatonin: bool}` | Morning gate | No (1 per event_date) | Last night's sleep and morning routine |
+| `mood` | `{value: 1-10}` | Morning gate / Update | Yes (snapshot) | Current mood level at time of submission |
+| `energy` | `{value: 1-10}` | Morning gate / Update | Yes (snapshot) | Current energy level at time of submission |
+| `anxiety` | `{value: 1-10}` | Morning gate / Update | Yes (snapshot) | Current anxiety level at time of submission |
+| `daily_summary` | `{meals: int, snacks: int, coffee: int, intrusive: int, exercise_minutes: int, sunlight_minutes: int, hours_worked: real}` | Morning gate / Update | Yes (per submission) | Reconciled daily totals; authoritative count for all counter fields |
+| `coffee` | `null` | Manual | Yes | Individual timestamped coffee event (optional timing detail) |
+| `intrusive` | `null` | Manual | Yes | Individual timestamped intrusive thought episode (optional timing detail) |
+| `exercise` | `{type?: str, duration_minutes?: int}` | Manual | Yes | Individual exercise session with optional details |
+| `food` | `{name?: str, is_dairy?: bool, is_full_meal?: bool}` | Manual | Yes | Individual meal or snack with optional details |
 
-Counter fields on the morning form appear in two sections:
-- **Confirm Yesterday** (required): `yesterday_intrusive`, `yesterday_meals`, `yesterday_snacks`, `yesterday_exercise_minutes`, `yesterday_sunlight_minutes`, `yesterday_hours_worked` — autofilled from yesterday's last submission, written as a retroactive row to yesterday's date.
-- **Today So Far** (all optional): `coffee`, `intrusive`, `meals`, `snacks`, `exercise_minutes`, `sunlight_minutes`, `hours_worked` — written to today's sub#1 row.
+**`sleep_hours`** is not stored — calculated at render time from `fell_asleep` and `sleep_end` (handling midnight crossover).
+
+### 5am Day Boundary
+
+The `event_date` field uses a **5am boundary**: if local time is before 05:00, events belong to yesterday's logical date. This aligns with the system block timer firing at 05:00 each morning. All date calculations in routes use `get_event_date()` helper to respect this boundary.
+
+### Startup Migration
+
+On first run with the new event log schema, if the old `checkins` table exists and `events` table is absent, the application automatically:
+1. Creates the new `events` table and indexes
+2. Reads all submitted rows from the old `checkins` table where `submitted_at IS NOT NULL`
+3. Converts each row to one or more event records:
+   - `sleep` event (if `submission_number=1`)
+   - `mood`, `energy`, `anxiety` events (if non-NULL)
+   - `daily_summary` event (if any counter field non-NULL; fills NULL fields with 0)
+4. Sets `source = 'morning_gate'` for `submission_number=1` rows, `source = 'update'` for later submissions
+5. Drops the old `checkins` table
+
+This migration is **one-time, non-destructive** (reads only, then drops). All historical data is preserved as events.
+
+## Form Data Model
+
+### Morning Gate Form
+
+Submitted to `POST /submit`, creates 5–6 events in a single batch transaction:
+
+| Section | Fields | Event(s) Created | Validation |
+|---|---|---|---|
+| Confirm Yesterday | yesterday_intrusive, yesterday_meals, yesterday_snacks, yesterday_exercise_minutes, yesterday_sunlight_minutes, yesterday_hours_worked | `daily_summary` for yesterday | Each value >= corresponding field in yesterday's previous daily_summary (default 0 if none) |
+| Last Night | shower_end, no_shower, fell_asleep, sleep_end, no_sleep, nightmares, melatonin | `sleep` for today | Either shower_end or no_shower=1; either both fell_asleep & sleep_end or no_sleep=1 |
+| Mental State | mood, energy, anxiety (1–10) | `mood`, `energy`, `anxiety` events for today | All required |
+| Today So Far | coffee, intrusive, meals, snacks, exercise_minutes, sunlight_minutes, hours_worked (all optional) | `daily_summary` for today (only if any field non-zero) | N/A (optional) |
+
+**Note on yesterday's coffee**: The form does not collect `yesterday_coffee`. This field is carried forward from yesterday's previous `daily_summary` (defaults to 0) and inserted into yesterday's new daily_summary automatically.
+
+### Update Form
+
+Submitted to `POST /update`, creates 2–3 events:
+
+| Section | Fields | Event(s) Created | Validation |
+|---|---|---|---|
+| Mental State | mood, energy, anxiety (all optional) | `mood`, `energy`, `anxiety` events if provided | None (optional) |
+| Today So Far | coffee, intrusive, meals, snacks, exercise_minutes, sunlight_minutes, hours_worked (all optional, pre-filled) | `daily_summary` for today (only if any field differs from previous summary) | Each submitted value >= previous daily_summary value AND >= count of individual events for that type (coffee, intrusive only) |
+
+**Lock check**: If tomorrow's `event_date` has a `sleep` event with `source='morning_gate'`, reject with 400 — today is finalized.
 
 ## API Endpoints
 
@@ -83,50 +113,74 @@ Counter fields on the morning form appear in two sections:
 Home page landing. Returns a simple HTML page with two buttons: **Submit Checkin** (links to `/checkin`) and **View History** (links to `/history`). Dark theme matching form.html. Mobile-friendly. No database queries.
 
 ### `GET /checkin`
-Checks if today already has a `submission_number=1` row with `submitted_at IS NOT NULL`. If it does, redirects to `GET /update` (status 303). Otherwise, serves `static/form.html`, queries yesterday's last submission, and injects `value` attributes into the `yesterday_*` counter fields for autofill. No authentication.
+Checks if today (per `get_event_date()` 5am boundary) already has a `sleep` event with `source='morning_gate'`. If yes, redirects to `GET /update` (status 303). Otherwise, serves `static/form.html`, queries yesterday's latest `daily_summary` event, and injects `value` attributes into the `yesterday_*` counter fields for autofill. All counter fields default to blank if no previous summary exists. No authentication.
 
 ### `POST /submit`
-Morning gate form submission. Two DB inserts in order:
-1. **Yesterday retroactive row** (`submission_number = MAX(yesterday) + 1`): writes confirmed counter values (intrusive, meals, snacks, exercise_minutes, sunlight_minutes, hours_worked) to yesterday's date. Counter validation: each must be >= yesterday's current max.
-2. **Today sub#1 row**: sleep fields, snapshot (mood/energy/anxiety), melatonin, plus any optional today-counter values.
+Morning gate form submission. Performs server-side sleep validation (shower/no_shower, sleep/no_sleep), then batch-inserts 5–6 events in a single transaction:
+1. `sleep` event for today (with all sleep fields from form)
+2. `mood` event for today
+3. `energy` event for today
+4. `anxiety` event for today
+5. `daily_summary` event for yesterday (required; includes all 7 counter fields; coffee carried forward from yesterday's previous summary, default 0)
+6. `daily_summary` event for today (optional, only if any "Today So Far" field is non-zero)
+
+All events use `source='morning_gate'`.
+
+Counter validation: confirmed yesterday values must each be >= corresponding field in yesterday's latest `daily_summary` (default 0 if none).
 
 Then unblocks all devices (ipset add → flush must_checkin → remove DNAT rule).
 
-Sleep validation: `shower_end` requires either a value or `no_shower=1`; `fell_asleep`/`sleep_end` require either both values or `no_sleep=1`.
-
 ### `GET /update`
-Serves `static/update.html`. Queries today's last submission and injects counter field values for pre-fill. Snapshot fields left blank.
+Serves `static/update.html`. Queries today's latest `daily_summary` event and injects counter field values for pre-fill. Snapshot fields (mood/energy/anxiety) left blank. All fields optional.
 
 ### `POST /update`
-1. **Lock check**: if tomorrow has a `submission_number=1` row with `submitted_at IS NOT NULL`, reject with 400 ("Today's checkin is finalized").
-2. **Counter validation**: each submitted counter >= today's current max for that field; reject with 400 if any decrease.
-3. Insert new row with `submission_number = MAX(today) + 1`.
+1. **Lock check**: if tomorrow (per `get_event_date()`) has a `sleep` event with `source='morning_gate'`, reject with 400 ("Today's checkin is finalized").
+2. **Counter validation** (two layers):
+   - Each submitted counter >= corresponding field in today's latest `daily_summary` (default 0)
+   - Coffee and intrusive submitted values >= count of individual `coffee`/`intrusive` events for today
+3. Insert events based on what changed:
+   - Insert `mood`, `energy`, `anxiety` events if provided (only if values are non-NULL)
+   - Insert `daily_summary` event for today (only if any counter differs from previous summary; pre-fill missing submitted fields from current summary)
+
+All new events use `source='update'`.
 
 No firewall changes. Returns HTML confirmation.
 
 ### `GET /history`
-All rows from `checkins`, ordered by date DESC then submission_number DESC. Each submission is its own table row with a Sub# column. `sleep_hours` calculated at render time. Backfilled rows dimmed. Dark theme matching forms.
+All events from `events` table, ordered by `event_date DESC, logged_at DESC`. Table columns: Date | Time (HH:MM from logged_at) | Source (gate/upd/man) | Type (event_type) | Details (formatted data).
+
+Details formatting per event type:
+- `sleep`: "Wake HH:MM · 7.5h · Nightmares · Melatonin" (sleep_hours computed in Python)
+- `mood`/`energy`/`anxiety`: just the value (e.g., "7")
+- `daily_summary`: "Meals:3 Snacks:1 Coffee:2 Ex:45m Sun:30m Work:6h Int:0"
+- `coffee`/`intrusive`: "—" (no data)
+- `exercise`: "{type} {duration}m" if present
+- `food`: "{name} · meal/snack · dairy?"
+
+Dark theme with subtle row tinting (sleep rows slightly blue, daily_summary rows slightly green).
 
 ### `GET /status`
-Returns JSON `{"blocked": true/false, "today_submitted": true/false}`. Checks `allowed_internet` ipset membership.
+Returns JSON `{"blocked": true/false, "today_submitted": true/false}`. Checks `allowed_internet` ipset membership. `today_submitted` is true if a `sleep` event with `source='morning_gate'` exists for today's `event_date`.
 
 ## Form UI
 
+Field names and form structure are **unchanged** from the checkins era. The POST handlers read the same form field names, but insert them into the new event log structure instead of flat checkins rows.
+
 ### Morning form (`static/form.html`)
 Four sections in order:
-1. **Confirm Yesterday** — required counter fields (`yesterday_` prefixed names), autofilled from yesterday's last submission
-2. **Last Night** — sleep fields with fallback checkboxes (no_shower, no_sleep), nightmares, melatonin
-3. **Mental State** — mood, energy, anxiety (required)
-4. **Today So Far** — all optional: coffee, intrusive, meals, snacks, exercise, sunlight, hours_worked
+1. **Confirm Yesterday** — required counter fields (`yesterday_intrusive`, `yesterday_meals`, `yesterday_snacks`, `yesterday_exercise_minutes`, `yesterday_sunlight_minutes`, `yesterday_hours_worked`), autofilled from yesterday's latest `daily_summary` event
+2. **Last Night** — sleep fields with fallback checkboxes (`no_shower`, `no_sleep`), `nightmares`, `melatonin`
+3. **Mental State** — `mood`, `energy`, `anxiety` (required, 1–10 scale)
+4. **Today So Far** — all optional: `coffee`, `intrusive`, `meals`, `snacks`, `exercise_minutes`, `sunlight_minutes`, `hours_worked`
 
-Confirmation page includes link to `/update`.
+Confirmation page includes link to `/update`. Dark GitHub theme (`#0d1117` background, `#58a6ff` accent).
 
 ### Update form (`static/update.html`)
 Two sections:
-1. **Mental State** — mood, energy, anxiety (optional)
-2. **Today So Far** — coffee, intrusive, meals, snacks, exercise, sunlight, hours_worked (optional, pre-filled from today's last submission)
+1. **Mental State** — `mood`, `energy`, `anxiety` (all optional, 1–10 scale)
+2. **Today So Far** — `coffee`, `intrusive`, `meals`, `snacks`, `exercise_minutes`, `sunlight_minutes`, `hours_worked` (all optional; pre-filled from today's latest `daily_summary` event)
 
-No sleep section. Submit button: "Save Update". Matches morning form dark theme.
+No sleep section. Submit button: "Save Update". Matches morning form dark theme. Includes "Back to home" link.
 
 ## Enforcement Mechanism
 
