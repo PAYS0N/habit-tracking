@@ -96,6 +96,8 @@
         <button class="btn-quick" id="btn-coffee" onclick="logCoffee(this)">Coffee</button>
         <button class="btn-quick" id="btn-headache" onclick="showForm('headache')">Headache</button>
         <button class="btn-quick" id="btn-bowel" onclick="showForm('bowel')">Bowel</button>
+        <button class="btn-quick" id="btn-work" onclick="showForm('work')">Work</button>
+        <button class="btn-quick" id="btn-relax" onclick="showForm('relax')">Relax</button>
     </div>
 
     <div class="confirm-msg" id="confirm-banner"></div>
@@ -177,8 +179,49 @@
         </div>
     </div>
 
+    <!-- Work form -->
+    <div class="quick-form-wrap" id="form-work">
+        <div class="quick-form">
+            <form id="work-form">
+                <div class="field">
+                    <label class="field-label" for="work-hours">Hours</label>
+                    <input type="number" id="work-hours" name="hours" min="0.5" max="24" step="0.5" required placeholder="e.g. 2.5">
+                </div>
+                <div class="field">
+                    <label class="field-label" for="work-mood">Mood snapshot (1–10, optional)</label>
+                    <input type="number" id="work-mood" name="mood" min="1" max="10" placeholder="1–10">
+                </div>
+                <button type="submit" class="btn-log">Log Work</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Relax form -->
+    <div class="quick-form-wrap" id="form-relax">
+        <div class="quick-form">
+            <form id="relax-form">
+                <div class="field">
+                    <label class="field-label" for="relax-hours">Hours</label>
+                    <input type="number" id="relax-hours" name="hours" min="0.5" max="24" step="0.5" required placeholder="e.g. 1.5">
+                </div>
+                <div class="field">
+                    <label class="field-label">Video game?</label>
+                    <div class="toggle-group">
+                        <label><input type="radio" name="video_game" value="0" checked><span>No</span></label>
+                        <label><input type="radio" name="video_game" value="1"><span>Yes</span></label>
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="field-label" for="relax-mood">Mood snapshot (1–10, optional)</label>
+                    <input type="number" id="relax-mood" name="mood" min="1" max="10" placeholder="1–10">
+                </div>
+                <button type="submit" class="btn-log">Log Relax</button>
+            </form>
+        </div>
+    </div>
+
     <script>
-        const FORM_TYPES = ['food', 'headache', 'bowel'];
+        const FORM_TYPES = ['food', 'headache', 'bowel', 'work', 'relax'];
 
         function showForm(type) {
             FORM_TYPES.forEach(t => {
@@ -260,6 +303,28 @@
                 document.getElementById('form-bowel').classList.remove('visible');
                 document.getElementById('btn-bowel').classList.remove('active');
                 showBanner('Logged!');
+            }
+        });
+
+        document.getElementById('work-form').addEventListener('submit', async e => {
+            e.preventDefault();
+            const ok = await postEvent(e.target, '/event/work');
+            if (ok) {
+                e.target.reset();
+                document.getElementById('form-work').classList.remove('visible');
+                document.getElementById('btn-work').classList.remove('active');
+                showBanner('Work logged!');
+            }
+        });
+
+        document.getElementById('relax-form').addEventListener('submit', async e => {
+            e.preventDefault();
+            const ok = await postEvent(e.target, '/event/relax');
+            if (ok) {
+                e.target.reset();
+                document.getElementById('form-relax').classList.remove('visible');
+                document.getElementById('btn-relax').classList.remove('active');
+                showBanner('Relax logged!');
             }
         });
 

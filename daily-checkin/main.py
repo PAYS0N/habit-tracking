@@ -199,6 +199,18 @@ def format_event_details(event_type: str, data_str: str | None) -> str:
     elif event_type == "bowel":
         return d.get("type", "—")
 
+    elif event_type == "work":
+        hours = d.get("hours")
+        return f"{hours}h" if hours is not None else "—"
+
+    elif event_type == "relax":
+        parts = []
+        if d.get("hours") is not None:
+            parts.append(f"{d['hours']}h")
+        if d.get("video_game"):
+            parts.append("gaming")
+        return " · ".join(parts) if parts else "—"
+
     else:
         return data_str
 
@@ -625,6 +637,19 @@ async def update_submit(
             status_code=400,
         )
 
+    # Layer 2 (continued): validate hours_worked against sum of individual work events
+    work_hours_row = await conn.execute_fetchall(
+        "SELECT COALESCE(SUM(CAST(json_extract(data, '$.hours') AS REAL)), 0) as total "
+        "FROM events WHERE event_type = 'work' AND event_date = ?",
+        (today_date,),
+    )
+    work_hours_total = work_hours_row[0]["total"] if work_hours_row else 0
+    if hours_worked is not None and hours_worked < work_hours_total:
+        return HTMLResponse(
+            content=f"<p style='color:red'>Hours worked cannot be less than {work_hours_total:.1f}h from individual work events.</p>",
+            status_code=400,
+        )
+
     # Insert snapshot events (if provided)
     if mood is not None:
         await insert_event(conn, "mood", today_date, now, {"value": mood}, "update")
@@ -753,6 +778,41 @@ async def event_bowel(type: str = Form(...)):
     event_date = get_event_date()
     now = datetime.now().isoformat()
     await insert_event(conn, "bowel", event_date, now, {"type": type}, "manual")
+    await conn.commit()
+    return JSONResponse({"ok": True})
+
+
+@app.post("/event/work")
+async def event_work(
+    hours: float = Form(...),
+    mood: Optional[int] = Form(None),
+):
+    conn = await get_db()
+    event_date = get_event_date()
+    now = datetime.now().isoformat()
+    await insert_event(conn, "work", event_date, now, {"hours": hours}, "manual")
+    if mood is not None:
+        await insert_event(conn, "mood", event_date, now, {"value": mood}, "manual")
+    await conn.commit()
+    return JSONResponse({"ok": True})
+
+
+@app.post("/event/relax")
+async def event_relax(
+    hours: float = Form(...),
+    video_game: Optional[int] = Form(None),
+    mood: Optional[int] = Form(None),
+):
+    conn = await get_db()
+    event_date = get_event_date()
+    now = datetime.now().isoformat()
+    data = {
+        "hours": hours,
+        "video_game": bool(video_game) if video_game is not None else False,
+    }
+    await insert_event(conn, "relax", event_date, now, data, "manual")
+    if mood is not None:
+        await insert_event(conn, "mood", event_date, now, {"value": mood}, "manual")
     await conn.commit()
     return JSONResponse({"ok": True})
 

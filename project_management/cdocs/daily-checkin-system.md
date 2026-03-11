@@ -51,7 +51,7 @@ CREATE INDEX idx_events_date ON events (event_date);
 
 See [events.md](events.md) for the full event type catalog, field schemas, and design notes.
 
-Summary of event types: `sleep`, `mood`, `energy`, `anxiety`, `daily_summary`, `coffee`, `food`, `headache`, `medicine`, `bowel`, `exercise`, `intrusive`, `sunlight`, `work`.
+Summary of event types: `sleep`, `mood`, `energy`, `anxiety`, `daily_summary`, `coffee`, `food`, `headache`, `medicine`, `bowel`, `exercise`, `intrusive`, `sunlight`, `work`, `relax`.
 
 **`sleep_hours`** is not stored — calculated at render time from `fell_asleep` and `sleep_end` (handling midnight crossover).
 
@@ -95,7 +95,7 @@ Submitted to `POST /update`, creates 2–3 events:
 | Section | Fields | Event(s) Created | Validation |
 |---|---|---|---|
 | Mental State | mood, energy, anxiety (all optional) | `mood`, `energy`, `anxiety` events if provided | None (optional) |
-| Today So Far | coffee, intrusive, meals, snacks, exercise_minutes, sunlight_minutes, hours_worked (all optional, pre-filled) | `daily_summary` for today (only if any field differs from previous summary) | Each submitted value >= previous daily_summary value AND >= count of individual events for that type (coffee, intrusive only) |
+| Today So Far | coffee, intrusive, meals, snacks, exercise_minutes, sunlight_minutes, hours_worked (all optional, pre-filled) | `daily_summary` for today (only if any field differs from previous summary) | Each submitted value >= previous daily_summary value AND >= count/sum of individual events for that type (coffee: count, intrusive: count, hours_worked: sum of work event hours) |
 
 **Lock check**: If tomorrow's `event_date` has a `sleep` event with `source='morning_gate'`, reject with 400 — today is finalized.
 
@@ -104,7 +104,7 @@ Submitted to `POST /update`, creates 2–3 events:
 ### `GET /`
 Home page landing. Returns `static/home.html`. Dark theme, mobile-first. No database queries. Contains two sections:
 - **Checkin**: "Submit Checkin" (→ `/checkin`) and "View History" (→ `/history`) buttons.
-- **Quick Log**: 2×2 grid of compact buttons (Food, Coffee, Headache, Bowel). Tapping a button expands an inline form below the grid; Coffee submits immediately via `fetch` with no form. All forms submit via `POST /event/{type}` and return to home with a brief green "Logged!" banner that auto-fades after 3s.
+- **Quick Log**: 2×3 grid of compact buttons (Food, Coffee, Headache, Bowel, Work, Relax). Tapping a button expands an inline form below the grid; Coffee submits immediately via `fetch` with no form. Work and Relax forms include an optional mood snapshot (submitted as a separate `mood` event server-side). All forms submit via `POST /event/{type}` and return to home with a brief green "Logged!" banner that auto-fades after 3s.
 
 ### `GET /checkin`
 Checks if today (per `get_event_date()` 5am boundary) already has a `sleep` event with `source='morning_gate'`. If yes, redirects to `GET /update` (status 303). Otherwise, serves `static/form.html`, queries yesterday's latest `daily_summary` event, and injects `value` attributes into the `yesterday_*` counter fields for autofill. All counter fields default to blank if no previous summary exists. No authentication.
@@ -164,6 +164,12 @@ Logs a headache event and optionally a medicine event in a single transaction. F
 
 ### `POST /event/bowel`
 Logs a bowel event. Field: `type` (required, `"diarrhea"` or `"constipation"`). Creates a `bowel` event with `source='manual'`. Returns `{"ok": true}` or 400 if type is invalid.
+
+### `POST /event/work`
+Logs a work session. Fields: `hours` (real, required), `mood` (1–10, optional). Creates a `work` event with `source='manual'`. If `mood` provided, also inserts a `mood` event (same timestamp, same source). Returns `{"ok": true}`.
+
+### `POST /event/relax`
+Logs a relax session. Fields: `hours` (real, required), `video_game` (0/1, optional, default false), `mood` (1–10, optional). Creates a `relax` event with `source='manual'`. If `mood` provided, also inserts a `mood` event. Returns `{"ok": true}`.
 
 ### `GET /status`
 Returns JSON `{"blocked": true/false, "today_submitted": true/false}`. Checks `allowed_internet` ipset membership. `today_submitted` is true if a `sleep` event with `source='morning_gate'` exists for today's `event_date`.

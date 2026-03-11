@@ -19,7 +19,8 @@ Single-table event log. Each row in `events` has `event_type`, `event_date` (5am
 | `exercise` | manual | Yes | `{type?: str, duration_minutes?: int}` | Individual session. |
 | `intrusive` | manual | Yes | NULL | Individual intrusive thought episode. Timing detail. |
 | `sunlight` | manual | Yes | `{duration_minutes?: int}` | Individual sunlight exposure. |
-| `work` | manual | Yes | `{hours?: real}` | Individual work session. |
+| `work` | manual | Yes | `{hours: real}` | Individual work session. Sum of work.hours must not exceed daily_summary.hours_worked on update. Optional mood snapshot inserted as a separate event. |
+| `relax` | manual | Yes | `{hours: real, video_game: bool}` | Individual relaxation session. Optional mood snapshot inserted as a separate event. |
 
 ## Field Schemas (verbose)
 
@@ -71,6 +72,17 @@ All fields required when written. Latest per event_date is ground truth for dail
 | Key | Type | Values |
 |---|---|---|
 | `type` | string | `"diarrhea"` or `"constipation"` |
+
+### work
+| Key | Type | Required |
+|---|---|---|
+| `hours` | real | yes |
+
+### relax
+| Key | Type | Required | Notes |
+|---|---|---|---|
+| `hours` | real | yes | |
+| `video_game` | bool | no (default false) | |
 
 ## Design Notes
 
