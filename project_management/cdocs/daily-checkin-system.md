@@ -12,7 +12,18 @@ A FastAPI service running on the Raspberry Pi router (kuudra) that serves a dail
 
 ```
 daily-checkin/
-├── main.py                       # FastAPI app: routes, event inserts, migration, counter validation, ipset/iptables calls
+├── main.py                       # FastAPI app entry point: startup/shutdown, router includes, home route
+├── config.py                     # Constants: PORT, DB_PATH, STATIC_DIR, DEVICES, IPSET_BIN, IPTABLES_BIN, SUMMARY_COUNTER_FIELDS
+├── database.py                   # DB layer: get_db, close_db, insert_event, get_latest_summary, has_morning_gate, migrate_if_needed
+├── firewall.py                   # unblock_all(): ipset add/flush + iptables DNAT removal
+├── utils.py                      # Pure helpers: calc_sleep_hours, get_event_date, format_event_details
+├── routes/
+│   ├── __init__.py
+│   ├── checkin.py                # GET /checkin, POST /submit
+│   ├── update.py                 # GET /update, POST /update
+│   ├── events.py                 # POST /event/{food,coffee,headache,bowel,work,relax}
+│   ├── history.py                # GET /history
+│   └── status.py                 # GET /status
 ├── schema.sql                    # SQLite DDL for events table (applied at startup if DB absent)
 ├── static/
 │   ├── form.html                 # Morning gate form (dark theme; unchanged field names)
@@ -204,7 +215,7 @@ No sleep section. Submit button: "Save Update". Matches morning form dark theme.
 | voidgloom | 192.168.22.50 |
 | akura_malice | 192.168.22.52 |
 
-To add a new device: add its IP to `DEVICES` in both `block.sh` and `main.py`.
+To add a new device: add its IP to `DEVICES` in both `block.sh` and `config.py`.
 
 ### Daily block (systemd timer — 05:00 Pi local time)
 
@@ -215,7 +226,7 @@ To add a new device: add its IP to `DEVICES` in both `block.sh` and `main.py`.
 
 ### Unblock on submit
 
-On `POST /submit`, `main.py`:
+On `POST /submit`, `routes/checkin.py` calls `firewall.unblock_all()`:
 1. Re-adds each device IP to `allowed_internet` via `sudo ipset add ... -exist`.
 2. Flushes `must_checkin` ipset (DNAT rule immediately stops matching any device).
 3. Deletes the DNAT rule from the nat PREROUTING chain.

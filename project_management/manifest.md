@@ -18,7 +18,17 @@
 
 | File | Description |
 |------|-------------|
-| [daily-checkin/main.py](../daily-checkin/main.py) | FastAPI app: routes (morning gate, update, history, status), DB init, backfill, counter validation, ipset/iptables calls |
+| [daily-checkin/main.py](../daily-checkin/main.py) | FastAPI app entry point: startup/shutdown lifecycle, router registration, home route |
+| [daily-checkin/config.py](../daily-checkin/config.py) | Constants: PORT, DB_PATH, SCHEMA_PATH, STATIC_DIR, DEVICES, IPSET_BIN, IPTABLES_BIN, SUMMARY_COUNTER_FIELDS |
+| [daily-checkin/database.py](../daily-checkin/database.py) | DB layer: get_db, close_db, insert_event, get_latest_summary, has_morning_gate, migrate_if_needed |
+| [daily-checkin/firewall.py](../daily-checkin/firewall.py) | Firewall helpers: unblock_all (ipset add/flush + iptables DNAT removal) |
+| [daily-checkin/utils.py](../daily-checkin/utils.py) | Pure helpers: calc_sleep_hours, get_event_date, format_event_details |
+| [daily-checkin/routes/__init__.py](../daily-checkin/routes/__init__.py) | Package marker for routes module |
+| [daily-checkin/routes/checkin.py](../daily-checkin/routes/checkin.py) | Routes: GET /checkin, POST /submit (morning gate) |
+| [daily-checkin/routes/update.py](../daily-checkin/routes/update.py) | Routes: GET /update, POST /update |
+| [daily-checkin/routes/events.py](../daily-checkin/routes/events.py) | Routes: POST /event/food, /event/coffee, /event/headache, /event/bowel, /event/work, /event/relax |
+| [daily-checkin/routes/history.py](../daily-checkin/routes/history.py) | Route: GET /history |
+| [daily-checkin/routes/status.py](../daily-checkin/routes/status.py) | Route: GET /status |
 | [daily-checkin/schema.sql](../daily-checkin/schema.sql) | SQLite DDL for the checkins table (multi-row per date) |
 | [daily-checkin/static/form.html](../daily-checkin/static/form.html) | Morning gate form: confirm yesterday's counters, last night's sleep, mental state, today so far |
 | [daily-checkin/static/update.html](../daily-checkin/static/update.html) | Update form: optional mental state snapshots and today's counter updates |

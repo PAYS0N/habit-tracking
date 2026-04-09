@@ -1,16 +1,14 @@
 # Daily Checkin — Project Status
 
-# RULES
-- No closed status, once finished just remove from open.
+Project tasks are managed centrally via the personal assistant CLI:
 
-## Active Work
+    /home/payson/Documents/repos/self/personal-assistant/scripts/project_tasks_cli.py
 
-| Item | Status | Notes |
-|------|--------|-------|
-| — | — | No active work items |
+Project slug: `daily-checkin`
 
-
-## Open Items
-
-- iptables/ipset persistence across reboot (DNAT rule and `must_checkin` set lost on reboot; block timer recreates at next 05:00)
-- HTTPS / trusted cert for captive portal
+Commands:
+- `project_tasks_cli.py list daily-checkin` — list open tasks
+- `project_tasks_cli.py add daily-checkin "<name>" [--severity S] [--difficulty D]  [--value V]` — add a task
+- `project_tasks_cli.py complete daily-checkin <task_id>` — mark done
+- `project_tasks_cli.py update daily-checkin <task_id> [--name N] [--severity S] [--difficulty D]  [--value V]` — update
+- `project_tasks_cli.py delete daily-checkin <task_id>` — delete
