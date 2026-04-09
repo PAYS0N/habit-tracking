@@ -10,3 +10,5 @@ pays0n ALL=(root) NOPASSWD: /usr/sbin/ipset del allowed_internet *
 pays0n ALL=(root) NOPASSWD: /usr/sbin/ipset test allowed_internet *
 pays0n ALL=(root) NOPASSWD: /usr/sbin/ipset flush must_checkin
 pays0n ALL=(root) NOPASSWD: /usr/sbin/iptables -t nat -D PREROUTING -i wlan0 -m set --match-set must_checkin src -p tcp --dport 80 -j DNAT --to-destination 192.168.22.1\:8900
+pays0n ALL=(root) NOPASSWD: /usr/bin/systemd-run --on-active=* --unit=akura-reblock /bin/bash /home/pays0n/Documents/Projects/habit-tracking/daily-checkin/reblock_akura.sh
+pays0n ALL=(root) NOPASSWD: /usr/bin/systemctl stop akura-reblock.timer

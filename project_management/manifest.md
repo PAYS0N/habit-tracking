@@ -23,9 +23,9 @@
 | File | Description |
 |------|-------------|
 | [daily-checkin/main.py](../daily-checkin/main.py) | FastAPI app entry point: startup/shutdown lifecycle, router registration, home route |
-| [daily-checkin/config.py](../daily-checkin/config.py) | Constants: PORT, DB_PATH, SCHEMA_PATH, STATIC_DIR, DEVICES, IPSET_BIN, IPTABLES_BIN, SUMMARY_COUNTER_FIELDS |
-| [daily-checkin/database.py](../daily-checkin/database.py) | DB layer: get_db, close_db, insert_event, get_latest_summary, has_morning_gate, migrate_if_needed |
-| [daily-checkin/firewall.py](../daily-checkin/firewall.py) | Firewall helpers: unblock_all (ipset add/flush + iptables DNAT removal) |
+| [daily-checkin/config.py](../daily-checkin/config.py) | Constants: PORT, DB_PATH, SCHEMA_PATH, STATIC_DIR, DEVICES, AKURA_IP, IPSET_BIN, IPTABLES_BIN, SUMMARY_COUNTER_FIELDS |
+| [daily-checkin/database.py](../daily-checkin/database.py) | DB layer: get_db, close_db, insert_event, get_latest_summary, has_morning_gate, get_video_game_hours_by_day, migrate_if_needed |
+| [daily-checkin/firewall.py](../daily-checkin/firewall.py) | Firewall helpers: unblock_all, unblock_akura, reblock_akura, schedule_akura_reblock |
 | [daily-checkin/utils.py](../daily-checkin/utils.py) | Pure helpers: calc_sleep_hours, get_event_date, format_event_details |
 | [daily-checkin/routes/__init__.py](../daily-checkin/routes/__init__.py) | Package marker for routes module |
 | [daily-checkin/routes/checkin.py](../daily-checkin/routes/checkin.py) | Routes: GET /checkin, POST /submit (morning gate) |
@@ -37,6 +37,7 @@
 | [daily-checkin/static/form.html](../daily-checkin/static/form.html) | Morning gate form: confirm yesterday's counters, last night's sleep, mental state, today so far |
 | [daily-checkin/static/update.html](../daily-checkin/static/update.html) | Update form: optional mental state snapshots and today's counter updates |
 | [daily-checkin/static/home.html](../daily-checkin/static/home.html) | Home screen: Submit Checkin / View History buttons + Quick Log section (Food, Coffee, Headache, Bowel inline forms) |
+| [daily-checkin/reblock_akura.sh](../daily-checkin/reblock_akura.sh) | Shell script invoked by transient systemd timer to re-block akura_malice after a video game session |
 | [daily-checkin/block.sh](../daily-checkin/block.sh) | Shell script to block devices and add captive portal DNAT rule |
 | [daily-checkin/checkin.service](../daily-checkin/checkin.service) | systemd unit for the FastAPI backend (port 8900) |
 | [daily-checkin/daily-checkin-block.service](../daily-checkin/daily-checkin-block.service) | systemd oneshot unit for the block script |

@@ -15,7 +15,7 @@ daily-checkin/
 ├── main.py           # App entry point: startup/shutdown lifecycle, router includes, GET /
 ├── config.py         # Constants: PORT, DB_PATH, STATIC_DIR, DEVICES, IPSET_BIN, IPTABLES_BIN, SUMMARY_COUNTER_FIELDS
 ├── database.py       # DB layer: get_db, close_db, insert_event, get_latest_summary, has_morning_gate, migrate_if_needed
-├── firewall.py       # unblock_all(): ipset add/flush + iptables DNAT removal
+├── firewall.py       # unblock_all(), unblock_akura(), reblock_akura(), schedule_akura_reblock()
 ├── utils.py          # Helpers: calc_sleep_hours, get_event_date, format_event_details
 ├── routes/
 │   ├── checkin.py    # GET /checkin, POST /submit
@@ -25,6 +25,7 @@ daily-checkin/
 │   └── status.py     # GET /status
 ├── schema.sql        # SQLite DDL (applied at startup if DB absent)
 ├── static/           # form.html, update.html, home.html
+├── reblock_akura.sh  # Invoked by transient systemd timer to re-block akura_malice
 ├── block.sh          # Block script (run by systemd timer at 05:00)
 ├── checkin.service   # systemd unit for FastAPI backend
 ├── daily-checkin-block.service  # systemd oneshot for block script

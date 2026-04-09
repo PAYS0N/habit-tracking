@@ -1,10 +1,12 @@
 import json
 import logging
+from datetime import date, timedelta
 from typing import Optional
 
 import aiosqlite
 
 from config import DB_PATH, SCHEMA_PATH
+from utils import get_event_date
 
 log = logging.getLogger("daily-checkin")
 
@@ -63,6 +65,24 @@ async def get_latest_summary(conn: aiosqlite.Connection, event_date: str) -> dic
     if rows and rows[0]["data"]:
         return json.loads(rows[0]["data"])
     return None
+
+
+async def get_video_game_hours_by_day(
+    conn: aiosqlite.Connection, days: int = 7
+) -> dict[str, float]:
+    """Return {event_date: total_hours} for video game relax events in the rolling window."""
+    today_str = get_event_date()
+    cutoff = (date.fromisoformat(today_str) - timedelta(days=days - 1)).isoformat()
+    rows = await conn.execute_fetchall(
+        "SELECT event_date, SUM(json_extract(data, '$.hours')) AS total_hours "
+        "FROM events "
+        "WHERE event_type = 'relax' "
+        "AND json_extract(data, '$.video_game') = 1 "
+        "AND event_date >= ? "
+        "GROUP BY event_date",
+        (cutoff,),
+    )
+    return {row["event_date"]: row["total_hours"] for row in rows}
 
 
 async def has_morning_gate(conn: aiosqlite.Connection, event_date: str) -> bool:
