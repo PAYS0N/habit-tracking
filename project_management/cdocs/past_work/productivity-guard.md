@@ -26,7 +26,7 @@ The system lives at `/home/pays0n/Documents/Projects/productivity-guard/`. The b
 
 **Request pipeline:** Checks force-block set → validates domain against conditional list → fetches device info and room from HA → queries DB for today's count and last 5 requests → calls LLM → if approved, calls `blocklist.unblock_domain()` → logs to DB → returns response.
 
-**Known bug:** The always-blocked domain check uses `domain.lstrip("www.")` which strips individual characters from the set `{'w', '.'}` rather than the literal prefix `"www."`. This produces incorrect results for domains containing those characters in unexpected positions (e.g., `"www.woot.com"` strips too many characters). For `www.twitter.com` specifically, it happens to work correctly. Fix: replace with `domain.removeprefix("www.")` or a conditional string slice.
+**Known bug:** Always-blocked domain check uses `domain.lstrip("www.")` which strips individual characters rather than the literal prefix. Fix: use `domain.removeprefix("www.")`.
 
 ## Blocklist Manager
 

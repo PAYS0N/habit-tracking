@@ -7,12 +7,16 @@
 | [project_management/manifest.md](manifest.md) | This file — full project file listing with descriptions |
 | [project_management/cdoc.md](cdoc.md) | Template instructions for generating context documents |
 | [project_management/prompting.md](prompting.md) | Template instructions for generating task prompts |
-| [project_management/cdocs/daily-checkin-system.md](cdocs/daily-checkin-system.md) | Full system documentation for the deployed daily checkin service |
-| [project_management/cdocs/events.md](cdocs/events.md) | Event type catalog: all types, JSON data schemas, design notes |
-| [project_management/cdocs/event-log-requirements.md](cdocs/event-log-requirements.md) | Requirements notes for the planned event log architecture redesign |
-| [project_management/cdocs/event-log-db-plan.md](cdocs/event-log-db-plan.md) | Database schema plan for the event log architecture (DDL, event catalog, migration, queries) |
-| [project_management/cdocs/pi-router.md](cdocs/pi-router.md) | Pi network architecture, ipset/iptables setup, existing sudoers |
-| [project_management/cdocs/productivity-guard.md](cdocs/productivity-guard.md) | Existing FastAPI service on the Pi; pattern reference |
+| [project_management/cdocs/overview.md](cdocs/overview.md) | System overview, repository layout, systemd units, known limitations |
+| [project_management/cdocs/database.md](cdocs/database.md) | DB schema, 5am boundary, source values, key DB functions, migration |
+| [project_management/cdocs/routes.md](cdocs/routes.md) | All API endpoints: behavior, validation, events created |
+| [project_management/cdocs/forms.md](cdocs/forms.md) | Morning gate and update form fields, Quick Log, UI theme |
+| [project_management/cdocs/enforcement.md](cdocs/enforcement.md) | Blocked devices, daily block mechanism, unblock flow, sudoers |
+| [project_management/cdocs/events.md](cdocs/events.md) | Event type catalog, key field schemas, design decisions |
+| [project_management/cdocs/queries.md](cdocs/queries.md) | Common SQL/Python query patterns for the events table |
+| [project_management/cdocs/past_work/pi-router.md](cdocs/past_work/pi-router.md) | Pi network architecture, ipset/iptables setup, existing sudoers |
+| [project_management/cdocs/past_work/productivity-guard.md](cdocs/past_work/productivity-guard.md) | Productivity Guard FastAPI service: DNS blocking, LLM gatekeeper, Firefox extension |
+| [project_management/cdocs/past_work/home-assistant.md](cdocs/past_work/home-assistant.md) | Home Assistant deployment, Bermuda BLE room tracking, HA REST API |
 
 ## Daily Checkin Service
 
