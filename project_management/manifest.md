@@ -37,6 +37,7 @@
 | [daily-checkin/static/form.html](../daily-checkin/static/form.html) | Morning gate form: confirm yesterday's counters, last night's sleep, mental state, today so far |
 | [daily-checkin/static/update.html](../daily-checkin/static/update.html) | Update form: optional mental state snapshots and today's counter updates |
 | [daily-checkin/static/home.html](../daily-checkin/static/home.html) | Home screen: Submit Checkin / View History buttons + Quick Log section (Food, Coffee, Headache, Bowel inline forms) |
+| [daily-checkin/setup.sh](../daily-checkin/setup.sh) | Deployment script: syncs source to deploy dir, installs systemd units + sudoers, restarts services |
 | [daily-checkin/reblock_akura.sh](../daily-checkin/reblock_akura.sh) | Shell script invoked by transient systemd timer to re-block akura_malice after a video game session |
 | [daily-checkin/block.sh](../daily-checkin/block.sh) | Shell script to block devices and add captive portal DNAT rule |
 | [daily-checkin/checkin.service](../daily-checkin/checkin.service) | systemd unit for the FastAPI backend (port 8900) |

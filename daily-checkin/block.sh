@@ -12,7 +12,7 @@ IPSET="/usr/sbin/ipset"
 IPTABLES="/usr/sbin/iptables"
 
 PORT=8900
-DEVICES=(192.168.22.75 192.168.22.50 192.168.22.52)
+DEVICES=(192.168.22.75 192.168.22.50)
 
 # Create must_checkin ipset if it doesn't exist
 "$IPSET" create must_checkin hash:ip 2>/dev/null || true
